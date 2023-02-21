@@ -1,0 +1,90 @@
+rule download_dipcall_vcf:
+    output:
+        "",
+    shell:
+        "curl blablbalba"
+
+
+rule download_bench_vcf:
+    output:
+        "",
+    shell:
+        "curl blablbalba"
+
+
+rule download_bench_bed:
+    output:
+        "",
+    shell:
+        "curl blablbalba"
+
+
+rule download_GRCh38:
+    output:
+        "",
+    shell:
+        "curl blablbalba"
+
+
+rule download_hg2_t2t_asm:
+    output:
+        "",
+    shell:
+        "curl blablbalba"
+
+
+# can this just be vcfeval?
+rule run_happy:
+    input:
+        ref=rules.download_GRCh38.output,
+        bench_vcf=rules.download_bench_vcf.output,
+        # bench_tbi=rules.index_bench_vcf.output,
+        bench_bed=rules.download_bench_bed.output,
+        query_vcf=rules.download_bench_bed.output,
+        # query_tbi=rules.index_query_vcf.output,
+    output:
+        "",
+    conda:
+        "envs/happy.yml"
+    shell:
+        """
+        hap.py \
+        {input.truth_vcf} {input.query_vcf} \
+        -f {input.bench_bed} \
+        -o {params.prefix} \
+        -r {input.ref}
+        """
+
+
+rule vcf_to_bed:
+    input:
+        "",
+    output:
+        "",
+
+
+# (somehow) run script from https://github.com/mobinasri/flagger/blob/8a67edf24b5a289ff8dd2f62756ffe532c768ce6/programs/src/project_blocks_multi_thread.py
+rule run_liftover:
+    input:
+        # TODO where to get this?
+        paf="",
+        bed=rules.vcf_to_bed.output,
+    output:
+        projectable="results/projections/projectable_{label}.bed",
+        projected="results/projectsion/projected_{label}.bed",
+    threads: 8
+    shell:
+        """
+        python project_blocks.py \
+        --mode ref2asm \
+        --paf {input.paf} \
+        --blocks {input.bed} \
+        --outputProjectable {output.projectable} \
+        --outputProjected {output.projected}
+        --threads={threads}
+        """
+
+
+rule all:
+    input:
+        expand(rules.run_liftover.output, label=["fp", "fn"]),
