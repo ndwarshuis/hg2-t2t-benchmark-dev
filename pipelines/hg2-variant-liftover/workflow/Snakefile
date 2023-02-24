@@ -52,6 +52,15 @@ rule unzip_ref:
         "gunzip -c {input} > {output}"
 
 
+rule unzip_paf:
+    input:
+        rules.download_paf.output,
+    output:
+        "results/paf/{hap}.paf",
+    shell:
+        "gunzip -c {input} > {output}"
+
+
 rule index_ref:
     input:
         rules.unzip_ref.output,
@@ -74,9 +83,19 @@ rule filter_query_vcf:
     shell:
         """
         gunzip -c {input} | \
-        grep -E '^(#|chr(22))' | \
+        grep -E '^(#|chr(21|22))' | \
         bgzip -c > {output}
         """
+
+
+# for testing
+rule filter_paf:
+    input:
+        rules.unzip_paf.output,
+    output:
+        "results/paf/{hap}_filtered.paf",
+    shell:
+        "grep -E '^chr(21|22)' {input} > {output}"
 
 
 # for testing
@@ -87,38 +106,18 @@ use rule filter_query_vcf as filter_bench_vcf with:
         "results/bench/filtered.vcf.gz",
 
 
-# rule index_query_vcf:
-#     input:
-#         rules.filter_query_vcf.output,
-#     output:
-#         rules.filter_query_vcf.output[0] + ".tbi",
-#     conda:
-#         "envs/samtools.yml"
-#     shell:
-#         "tabix {input}"
-
-
-# use rule index_query_vcf as index_bench_vcf with:
-#     input:
-#         rules.filter_bench_vcf.output,
-#     output:
-#         rules.filter_bench_vcf.output[0] + ".tbi",
-
-
 rule run_happy:
     input:
         refi=rules.index_ref.output,
         ref=rules.unzip_ref.output,
         bench_vcf=rules.filter_bench_vcf.output,
-        # bench_tbi=rules.index_bench_vcf.output,
         bench_bed=rules.download_bench_bed.output,
         query_vcf=rules.filter_query_vcf.output,
         query_bed=rules.download_query_bed.output,
-        # query_tbi=rules.index_query_vcf.output,
     output:
         "results/benchmark/happy/happy.vcf.gz",
     params:
-        prefix=lambda wildcards, output: output[0].replace(".extended.csv", ""),
+        prefix=lambda wildcards, output: output[0].replace(".vcf.gz", ""),
     conda:
         "envs/happy.yml"
     log:
@@ -139,8 +138,6 @@ rule run_happy:
         """
 
 
-# basically copy what I already do in ebm pipeline for 1st three columns, and
-# also include REF/ALT/FORMAT/SAMPLE
 rule vcf_to_bed:
     input:
         rules.run_happy.output,
@@ -164,31 +161,27 @@ rule filter_gt_errors:
         nogt="results/benchmark/bed/nogt_errors.bed",
     shell:
         """
-        sed {input} -n '/:am:/p' > {output.gt}
-        sed {input} '/:am:/d' > {output.nogt}
+        grep ':am:' {input} > {output.gt}
+        grep -v ':am:' {input} > {output.nogt}
         """
 
 
 rule filter_fp_errors:
     input:
-        rules.filter_gt_errors.output,
+        rules.filter_gt_errors.output.nogt,
     output:
         "results/benchmark/bed/fp_errors.bed",
     shell:
-        """
-        sed {input} -n '/:FP:/p' > {output}
-        """
+        "grep ':FP:' {input} > {output}"
 
 
 rule filter_fn_errors:
     input:
-        rules.filter_gt_errors.output,
+        rules.filter_gt_errors.output.nogt,
     output:
         "results/benchmark/bed/fn_errors.bed",
     shell:
-        """
-        sed {input} -n '/:FN:/p' > {output}
-        """
+        "grep ':FN:' {input} > {output}"
 
 
 def liftover_input(wildcards):
@@ -198,7 +191,7 @@ def liftover_input(wildcards):
     elif l == "fn":
         return rules.filter_fn_errors.output
     elif l == "gt":
-        return rules.filter_gt_errors.output
+        return rules.filter_gt_errors.output.gt
     else:
         assert False, "where did you learn to type? (wrong label)"
 
@@ -216,11 +209,9 @@ rule clone_liftover_scripts:
         """
 
 
-# NOTE will need to run with mat/pat (there are two pafs)
-# (somehow) run script from https://github.com/mobinasri/flagger/blob/8a67edf24b5a289ff8dd2f62756ffe532c768ce6/programs/src/project_blocks_multi_thread.py
 rule run_liftover:
     input:
-        paf=rules.download_paf.output,
+        paf=rules.filter_paf.output,
         bed=liftover_input,
         tooldir=rules.clone_liftover_scripts.output,
     output:
@@ -229,13 +220,13 @@ rule run_liftover:
     threads: 8
     shell:
         """
-        python {input.tooldir}/programs/src/project_blocks.py \
+        python {input.tooldir}/programs/src/project_blocks_multi_thread.py \
         --mode ref2asm \
         --paf {input.paf} \
         --blocks {input.bed} \
         --outputProjectable {output.projectable} \
-        --outputProjected {output.projected}
-        --threads={threads}
+        --outputProjection {output.projected} \
+        --threads {threads}
         """
 
 
