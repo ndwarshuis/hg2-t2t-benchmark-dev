@@ -1,42 +1,54 @@
-# pafs from here: https://drive.google.com/drive/u/1/folders/12_Y5Gvx50g6t9JVsRWdXWMp6L9tb3jJj
 # query files from here: https://drive.google.com/drive/u/1/folders/1lqGkHjY7YL0Dvm-YWRpaIYDQILAo3P8K
+# pafs from here: https://drive.google.com/drive/u/1/folders/12_Y5Gvx50g6t9JVsRWdXWMp6L9tb3jJj
 
 
-# TODO actually use curl
 rule download_query_vcf:
     output:
         "resources/query/query.vcf.gz",
-
-
-# TODO actually use curl
-rule download_query_bed:
-    output:
-        "resources/query/query.bed",
-
-
-# TODO actually use curl
-rule download_paf:
-    output:
-        "resources/paf/{hap}.paf.gz",
-
-
-rule download_bench_vcf:
-    output:
-        "resources/bench/bench.vcf.gz",
     params:
-        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
+        url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/draft_benchmarksets/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k_smvar-exclude/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.vcf.gz",
     shell:
         "curl -Ss -q -L -o {output} {params.url}"
 
 
-use rule download_bench_vcf as download_bench_bed with:
+use rule download_query_vcf as download_query_bed with:
+    output:
+        "resources/query/query.bed",
+    params:
+        url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/draft_benchmarksets/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k_smvar-exclude/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.benchmark.bed",
+
+
+def paf_url(wildcards):
+    h = wildcards.hap
+    if h == "pat":
+        return "https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/asm_varcalls/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.hap1.paf.gz"
+    elif h == "mat":
+        return "https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/asm_varcalls/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.hap2.paf.gz"
+    assert False, "are you typing with 3.14 fingers? (wrong hap)"
+
+
+use rule download_query_vcf as download_paf with:
+    output:
+        "resources/paf/{hap}.paf.gz",
+    params:
+        url=paf_url,
+
+
+use rule download_query_vcf as download_bench_vcf with:
+    output:
+        "resources/bench/bench.vcf.gz",
+    params:
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
+
+
+use rule download_query_vcf as download_bench_bed with:
     output:
         "resources/bench/bench.bed",
     params:
         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
 
 
-use rule download_bench_vcf as download_ref with:
+use rule download_query_vcf as download_ref with:
     output:
         "resources/references/GRCh38.fa.gz",
     params:
