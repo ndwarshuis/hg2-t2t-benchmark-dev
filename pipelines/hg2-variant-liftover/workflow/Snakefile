@@ -1,81 +1,235 @@
-rule download_dipcall_vcf:
+# pafs from here: https://drive.google.com/drive/u/1/folders/12_Y5Gvx50g6t9JVsRWdXWMp6L9tb3jJj
+# query files from here: https://drive.google.com/drive/u/1/folders/1lqGkHjY7YL0Dvm-YWRpaIYDQILAo3P8K
+
+
+# TODO actually use curl
+rule download_query_vcf:
     output:
-        "",
-    shell:
-        "curl blablbalba"
+        "resources/query/query.vcf.gz",
+
+
+# TODO actually use curl
+rule download_query_bed:
+    output:
+        "resources/query/query.bed",
+
+
+# TODO actually use curl
+rule download_paf:
+    output:
+        "resources/paf/{hap}.paf.gz",
 
 
 rule download_bench_vcf:
     output:
-        "",
+        "resources/bench/bench.vcf.gz",
+    params:
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
     shell:
-        "curl blablbalba"
+        "curl -Ss -q -L -o {output} {params.url}"
 
 
-rule download_bench_bed:
+use rule download_bench_vcf as download_bench_bed with:
     output:
-        "",
-    shell:
-        "curl blablbalba"
+        "resources/bench/bench.bed",
+    params:
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
 
 
-rule download_GRCh38:
+use rule download_bench_vcf as download_ref with:
     output:
-        "",
-    shell:
-        "curl blablbalba"
+        "resources/references/GRCh38.fa.gz",
+    params:
+        url="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
 
 
-rule download_hg2_t2t_asm:
+rule unzip_ref:
+    input:
+        rules.download_ref.output,
     output:
-        "",
+        "results/references/GRCh38.fa",
     shell:
-        "curl blablbalba"
+        "gunzip -c {input} > {output}"
 
 
-# can this just be vcfeval?
+rule index_ref:
+    input:
+        rules.unzip_ref.output,
+    output:
+        rules.unzip_ref.output[0] + ".fai",
+    conda:
+        "envs/samtools.yml"
+    shell:
+        "samtools faidx {input} -o {output}"
+
+
+# for testing
+rule filter_query_vcf:
+    input:
+        rules.download_query_vcf.output,
+    output:
+        "results/query/filtered.vcf.gz",
+    conda:
+        "envs/samtools.yml"
+    shell:
+        """
+        gunzip -c {input} | \
+        grep -E '^(#|chr(22))' | \
+        bgzip -c > {output}
+        """
+
+
+# for testing
+use rule filter_query_vcf as filter_bench_vcf with:
+    input:
+        rules.download_bench_vcf.output,
+    output:
+        "results/bench/filtered.vcf.gz",
+
+
+# rule index_query_vcf:
+#     input:
+#         rules.filter_query_vcf.output,
+#     output:
+#         rules.filter_query_vcf.output[0] + ".tbi",
+#     conda:
+#         "envs/samtools.yml"
+#     shell:
+#         "tabix {input}"
+
+
+# use rule index_query_vcf as index_bench_vcf with:
+#     input:
+#         rules.filter_bench_vcf.output,
+#     output:
+#         rules.filter_bench_vcf.output[0] + ".tbi",
+
+
 rule run_happy:
     input:
-        ref=rules.download_GRCh38.output,
-        bench_vcf=rules.download_bench_vcf.output,
+        refi=rules.index_ref.output,
+        ref=rules.unzip_ref.output,
+        bench_vcf=rules.filter_bench_vcf.output,
         # bench_tbi=rules.index_bench_vcf.output,
         bench_bed=rules.download_bench_bed.output,
-        query_vcf=rules.download_bench_bed.output,
+        query_vcf=rules.filter_query_vcf.output,
+        query_bed=rules.download_query_bed.output,
         # query_tbi=rules.index_query_vcf.output,
     output:
-        "",
+        "results/benchmark/happy/happy.vcf.gz",
+    params:
+        prefix=lambda wildcards, output: output[0].replace(".extended.csv", ""),
     conda:
         "envs/happy.yml"
-    shell:
-        """
-        hap.py \
-        {input.truth_vcf} {input.query_vcf} \
-        -f {input.bench_bed} \
-        -o {params.prefix} \
-        -r {input.ref}
-        """
-
-
-rule vcf_to_bed:
-    input:
-        "",
-    output:
-        "",
-
-
-# (somehow) run script from https://github.com/mobinasri/flagger/blob/8a67edf24b5a289ff8dd2f62756ffe532c768ce6/programs/src/project_blocks_multi_thread.py
-rule run_liftover:
-    input:
-        # TODO where to get this?
-        paf="",
-        bed=rules.vcf_to_bed.output,
-    output:
-        projectable="results/projections/projectable_{label}.bed",
-        projected="results/projectsion/projected_{label}.bed",
+    log:
+        "log/happy.log",
     threads: 8
     shell:
         """
-        python project_blocks.py \
+        HGREF={input.ref} \
+        hap.py \
+        --engine vcfeval \
+        --verbose \
+        --threads {threads} \
+        -f {input.bench_bed} \
+        -o {params.prefix} \
+        -T {input.query_bed} \
+        {input.bench_vcf} {input.query_vcf} \
+        > {log} 2>&1
+        """
+
+
+# basically copy what I already do in ebm pipeline for 1st three columns, and
+# also include REF/ALT/FORMAT/SAMPLE
+rule vcf_to_bed:
+    input:
+        rules.run_happy.output,
+    output:
+        "results/benchmark/bed/all_errors.bed",
+    shell:
+        """
+        gunzip -c {input} | \
+        sed '/^#/d' | \
+        sed '/UNK/d' | \
+        awk 'OFS="\t" {{ print $1, $2-1, $2+length($4)-1, $4, $5, $9, $10 }}' \
+        > {output}
+        """
+
+
+rule filter_gt_errors:
+    input:
+        rules.vcf_to_bed.output,
+    output:
+        gt="results/benchmark/bed/gt_errors.bed",
+        nogt="results/benchmark/bed/nogt_errors.bed",
+    shell:
+        """
+        sed {input} -n '/:am:/p' > {output.gt}
+        sed {input} '/:am:/d' > {output.nogt}
+        """
+
+
+rule filter_fp_errors:
+    input:
+        rules.filter_gt_errors.output,
+    output:
+        "results/benchmark/bed/fp_errors.bed",
+    shell:
+        """
+        sed {input} -n '/:FP:/p' > {output}
+        """
+
+
+rule filter_fn_errors:
+    input:
+        rules.filter_gt_errors.output,
+    output:
+        "results/benchmark/bed/fn_errors.bed",
+    shell:
+        """
+        sed {input} -n '/:FN:/p' > {output}
+        """
+
+
+def liftover_input(wildcards):
+    l = wildcards.label
+    if l == "fp":
+        return rules.filter_fp_errors.output
+    elif l == "fn":
+        return rules.filter_fn_errors.output
+    elif l == "gt":
+        return rules.filter_gt_errors.output
+    else:
+        assert False, "where did you learn to type? (wrong label)"
+
+
+rule clone_liftover_scripts:
+    output:
+        directory("results/tools/liftover"),
+    shell:
+        """
+        git clone \
+        --depth 1 \
+        --branch v0.2.0 \
+        https://github.com/mobinasri/flagger.git \
+        {output}
+        """
+
+
+# NOTE will need to run with mat/pat (there are two pafs)
+# (somehow) run script from https://github.com/mobinasri/flagger/blob/8a67edf24b5a289ff8dd2f62756ffe532c768ce6/programs/src/project_blocks_multi_thread.py
+rule run_liftover:
+    input:
+        paf=rules.download_paf.output,
+        bed=liftover_input,
+        tooldir=rules.clone_liftover_scripts.output,
+    output:
+        projectable="results/projections/projectable_{hap}_{label}.bed",
+        projected="results/projectsion/projected_{hap}_{label}.bed",
+    threads: 8
+    shell:
+        """
+        python {input.tooldir}/programs/src/project_blocks.py \
         --mode ref2asm \
         --paf {input.paf} \
         --blocks {input.bed} \
@@ -85,6 +239,13 @@ rule run_liftover:
         """
 
 
+# TODO if we want we can filter the lifted beds after the fact
+
+
 rule all:
     input:
-        expand(rules.run_liftover.output, label=["fp", "fn"]),
+        expand(
+            rules.run_liftover.output,
+            hap=["mat", "pat"],
+            label=["fp", "fn", "gt"],
+        ),
