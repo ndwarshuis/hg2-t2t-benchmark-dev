@@ -148,7 +148,7 @@ rule vcf_to_bed:
         gunzip -c {input} | \
         sed '/^#/d' | \
         sed '/UNK/d' | \
-        awk 'OFS="\t" {{ print $1, $2-1, $2+length($4)-1, $4, $5, $9, $10 }}' \
+        awk 'OFS="\t" {{ print $1, $2-1, $2+length($4)-1, $4, $5, $9, $10, $11 }}' \
         > {output}
         """
 
@@ -172,7 +172,7 @@ rule filter_fp_errors:
     output:
         "results/benchmark/bed/fp_errors.bed",
     shell:
-        "grep ':FP:' {input} > {output}"
+        "awk 'match($8, /FP/) {{print $0}}' {input} > {output}"
 
 
 rule filter_fn_errors:
@@ -181,7 +181,7 @@ rule filter_fn_errors:
     output:
         "results/benchmark/bed/fn_errors.bed",
     shell:
-        "grep ':FN:' {input} > {output}"
+        "awk 'match($7, /FN/) {{print $0}}' {input} > {output}"
 
 
 def liftover_input(wildcards):
