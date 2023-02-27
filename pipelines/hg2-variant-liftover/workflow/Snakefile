@@ -1,19 +1,38 @@
+from pathlib import Path
+
 # query files from here: https://drive.google.com/drive/u/1/folders/1lqGkHjY7YL0Dvm-YWRpaIYDQILAo3P8K
 # pafs from here: https://drive.google.com/drive/u/1/folders/12_Y5Gvx50g6t9JVsRWdXWMp6L9tb3jJj
+
+src_dir = Path("resources")
+src_query_dir = src_dir / "query"
+src_bench_dir = src_dir / "bench"
+
+res_dir = Path("results")
+
+tools_dir = res_dir / "tools"
+
+res_inter_dir = res_dir / "intermediate"
+res_paf_dir = res_inter_dir / "paf"
+res_query_dir = res_inter_dir / "query"
+res_comp_dir = res_inter_dir / "comparison"
+res_compbed_dir = res_comp_dir / "bed"
+res_proj_dir = res_inter_dir / "projections"
+
+final_dir = res_dir / "final"
 
 
 rule download_query_vcf:
     output:
-        "resources/query/query.vcf.gz",
+        src_query_dir / "query.vcf.gz",
     params:
-        url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/draft_benchmarksets/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k_smvar-exclude/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.vcf.gz",
+        url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/asm_varcalls/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.dip.vcf.gz",
     shell:
         "curl -Ss -q -L -o {output} {params.url}"
 
 
 use rule download_query_vcf as download_query_bed with:
     output:
-        "resources/query/query.bed",
+        src_query_dir / "query.bed",
     params:
         url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/draft_benchmarksets/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k_smvar-exclude/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.benchmark.bed",
 
@@ -29,28 +48,28 @@ def paf_url(wildcards):
 
 use rule download_query_vcf as download_paf with:
     output:
-        "resources/paf/{hap}.paf.gz",
+        src_dir / "paf" / "{hap}.paf.gz",
     params:
         url=paf_url,
 
 
 use rule download_query_vcf as download_bench_vcf with:
     output:
-        "resources/bench/bench.vcf.gz",
+        src_bench_dir / "bench.vcf.gz",
     params:
         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
 
 
 use rule download_query_vcf as download_bench_bed with:
     output:
-        "resources/bench/bench.bed",
+        src_bench_dir / "bench.bed",
     params:
         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
 
 
 use rule download_query_vcf as download_ref with:
     output:
-        "resources/references/GRCh38.fa.gz",
+        src_dir / "references" / "GRCh38.fa.gz",
     params:
         url="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
 
@@ -59,7 +78,7 @@ rule unzip_ref:
     input:
         rules.download_ref.output,
     output:
-        "results/references/GRCh38.fa",
+        res_dir / "references" / "GRCh38.fa",
     shell:
         "gunzip -c {input} > {output}"
 
@@ -68,7 +87,7 @@ rule unzip_paf:
     input:
         rules.download_paf.output,
     output:
-        "results/paf/{hap}.paf",
+        res_paf_dir / "{hap}.paf",
     shell:
         "gunzip -c {input} > {output}"
 
@@ -89,7 +108,7 @@ rule filter_query_vcf:
     input:
         rules.download_query_vcf.output,
     output:
-        "results/query/filtered.vcf.gz",
+        res_query_dir / "filtered.vcf.gz",
     conda:
         "envs/samtools.yml"
     shell:
@@ -105,7 +124,7 @@ rule filter_paf:
     input:
         rules.unzip_paf.output,
     output:
-        "results/paf/{hap}_filtered.paf",
+        res_paf_dir / "{hap}_filtered.paf",
     shell:
         "grep -E '^chr(21|22)' {input} > {output}"
 
@@ -115,7 +134,7 @@ use rule filter_query_vcf as filter_bench_vcf with:
     input:
         rules.download_bench_vcf.output,
     output:
-        "results/bench/filtered.vcf.gz",
+        res_dir / "filtered.vcf.gz",
 
 
 rule run_happy:
@@ -127,9 +146,9 @@ rule run_happy:
         query_vcf=rules.filter_query_vcf.output,
         query_bed=rules.download_query_bed.output,
     output:
-        "results/benchmark/happy/happy.vcf.gz",
+        res_comp_dir / "happy" / "happy.vcf.gz",
     params:
-        prefix=lambda wildcards, output: output[0].replace(".vcf.gz", ""),
+        prefix=lambda wildcards, output: str(output[0]).replace(".vcf.gz", ""),
     conda:
         "envs/happy.yml"
     log:
@@ -154,7 +173,7 @@ rule vcf_to_bed:
     input:
         rules.run_happy.output,
     output:
-        "results/benchmark/bed/all_errors.bed",
+        res_compbed_dir / "all_errors.bed",
     shell:
         """
         gunzip -c {input} | \
@@ -169,11 +188,11 @@ rule filter_gt_errors:
     input:
         rules.vcf_to_bed.output,
     output:
-        gt="results/benchmark/bed/gt_errors.bed",
-        nogt="results/benchmark/bed/nogt_errors.bed",
+        gt=res_compbed_dir / "gt_errors.bed",
+        nogt=res_compbed_dir / "nogt_errors.bed",
     shell:
         """
-        grep ':am:' {input} > {output.gt}
+        grep ':am:' {input} | sed 's/\t/;/g4' > {output.gt}
         grep -v ':am:' {input} > {output.nogt}
         """
 
@@ -182,18 +201,27 @@ rule filter_fp_errors:
     input:
         rules.filter_gt_errors.output.nogt,
     output:
-        "results/benchmark/bed/fp_errors.bed",
+        res_compbed_dir / "fp_errors.bed",
+    params:
+        col=8,
+        label="FP",
     shell:
-        "awk 'match($8, /FP/) {{print $0}}' {input} > {output}"
+        """
+        cat {input} | \
+        awk 'match(${params.col}, /{params.label}/) {{print $0}}' | \
+        sed 's/\t/;/g4' \
+        > {output}
+        """
 
 
-rule filter_fn_errors:
+use rule filter_fp_errors as filter_fn_errors with:
     input:
         rules.filter_gt_errors.output.nogt,
     output:
-        "results/benchmark/bed/fn_errors.bed",
-    shell:
-        "awk 'match($7, /FN/) {{print $0}}' {input} > {output}"
+        res_compbed_dir / "fn_errors.bed",
+    params:
+        col=7,
+        label="FN",
 
 
 def liftover_input(wildcards):
@@ -210,7 +238,7 @@ def liftover_input(wildcards):
 
 rule clone_liftover_scripts:
     output:
-        directory("results/tools/liftover"),
+        directory(res_dir / "tools/liftover"),
     shell:
         """
         git clone \
@@ -221,14 +249,21 @@ rule clone_liftover_scripts:
         """
 
 
+# use rule download_query_vcf as download_paftools with:
+#     output:
+#         tools_dir / "minimap" / "paftools.js",
+#     params:
+#         url="https://github.com/lh3/minimap2/blob/16b8d50199d607ba20754aaf5a7d111b644b66c0/misc/paftools.js",
+
+
 rule run_liftover:
     input:
         paf=rules.filter_paf.output,
         bed=liftover_input,
         tooldir=rules.clone_liftover_scripts.output,
     output:
-        projectable="results/projections/projectable_{hap}_{label}.bed",
-        projected="results/projectsion/projected_{hap}_{label}.bed",
+        projectable=res_proj_dir / "projectable_{hap}_{label}.bed",
+        projected=res_proj_dir / "projected_{hap}_{label}.bed",
     threads: 8
     shell:
         """
@@ -242,13 +277,22 @@ rule run_liftover:
         """
 
 
+rule unsquish_projections:
+    input:
+        rules.run_liftover.output.projected,
+    output:
+        final_dir / "projected_{hap}_{label}.bed",
+    shell:
+        "cat {input} | tr ';' '\t' > {output}"
+
+
 # TODO if we want we can filter the lifted beds after the fact
 
 
 rule all:
     input:
         expand(
-            rules.run_liftover.output,
+            rules.unsquish_projections.output,
             hap=["mat", "pat"],
             label=["fp", "fn", "gt"],
         ),
