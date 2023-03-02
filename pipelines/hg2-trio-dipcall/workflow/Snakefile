@@ -6,7 +6,7 @@ src_asm_dir = src_dir / "asm"
 
 res_dir = Path("results")
 res_asm_dir = res_dir / "asm"
-res_dip_dir = res_dir / "dipcall"
+res_dip_dir = res_dir / "dipcall" / "{parent}"
 
 
 def child_url(wildcards):
@@ -19,11 +19,10 @@ def child_url(wildcards):
         assert False, "Petrucci is not impressed with your fingers (wrong hap)"
 
 
-def child_hap(wildcards):
-    hap = wildcards.parent
-    if hap == "father":
+def child_hap(parent):
+    if parent == "father":
         return "pat"
-    elif hap == "mother":
+    elif parent == "mother":
         return "mat"
     else:
         assert False, "Even Guido can type better than you (wrong parent)"
@@ -46,10 +45,14 @@ rule index_child_asm:
     conda:
         "envs/dipcall.yml"
     shell:
-        "minimap2 -x asm5 -d {output} {input}"
+        "samtools faidx {input} > {output}"
 
 
 # NOTE: the parental asms are on google drive and need to be downloaded manually
+# HG3 hap1: https://drive.google.com/file/d/1qvrmf68uJ5VAesKNB_jdfmXuudCZd0Ys/view
+# HG3 hap2: https://drive.google.com/file/d/1Jhc_erBgPVYapG4kPQt7LWJKIu4iagdk/view
+# HG4 hap1: https://drive.google.com/file/d/1qgJf0LhjumYIp6XTzxL8OnjobwcQvDBd/view
+# HG4 hap2: https://drive.google.com/file/d/1-gpix77eg7F9wFYRDS1ndD_oMwhxEYsB/view
 rule laboriously_obtain_parental_asms:
     output:
         src_asm_dir / "parents" / "{parent}" / "{parent_hap}.fa.gz",
@@ -57,6 +60,15 @@ rule laboriously_obtain_parental_asms:
 
 rule run_dipcall:
     input:
+        unpack(
+            lambda wildcards: {
+                k: expand(path, child_hap=child_hap(wildcards.parent))
+                for k, path in [
+                    ("ref", rules.download_child_asm.output),
+                    ("ref_idx", rules.index_child_asm.output),
+                ]
+            }
+        ),
         **{
             k: expand(
                 rules.laboriously_obtain_parental_asms.output,
@@ -65,44 +77,30 @@ rule run_dipcall:
             )
             for k, h in [("h1", "pat"), ("h2", "mat")]
         },
-        unpack(
-            lambda wildcards: {
-                k: expand(path, child_hap=child_hap(wildcards.parent))
-                for k, path in [
-                    ("ref", rules.download_child_asm.output),
-                    ("ref_mmi", rules.index_child_asm.output),
-                ]
-            }
-        ),
-        par=get_male_bed,
     output:
-        vcf=res_dip_dir / "{parent}.vcf.gz",
-        make=res_dip_dir / "{parent}.mak",
+        vcf=res_dip_dir / "dip.vcf.gz",
+        make=res_dip_dir / "dip.mak",
     conda:
         "envs/dipcall.yml"
     params:
         prefix=lambda _, output: re.sub("\..*?", "", output[0]),
-        male_bed=get_dipcall_par_param,
     log:
-        "log/dipcall.log",
+        res_dip_dir / "dip.log",
+    threads: 8
     shell:
         """
         run-dipcall \
+            -z 200000,10000 \
             -t {threads} \
-            -d {input.ref_mmi} \
-            {params.extra} \
-            {params.male_bed} \
+            -d {input.ref_idx} \
             {params.prefix} \
             {input.ref} \
             {input.h1} \
             {input.h2} \
             > {output.make}
 
-        make -j{threads} -f {outputmmake}
+        make -j{threads} -f {output.make}
         """
-
-
-# combinations to run: child pat vs father and child mat vs mother
 
 
 rule all:
