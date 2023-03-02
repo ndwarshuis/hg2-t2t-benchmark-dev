@@ -1,0 +1,12 @@
+# lots of garbage here we don't need to track
+.snakemake
+
+# big pipeline files
+resources
+results/*
+!results/dipcall
+
+# workflow files
+workflow
+config
+

@@ -1,0 +1,6 @@
+stages:
+  snakemake:
+    cmd: snakemake --profile workflow/profiles/nisaba
+    outs:
+    - results/dipcall:
+        persist: true
