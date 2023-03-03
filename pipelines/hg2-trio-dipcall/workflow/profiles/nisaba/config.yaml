@@ -28,3 +28,4 @@ rerun-incomplete: True
 printshellcmds: True
 scheduler: greedy
 use-conda: True
+cluster-cancel: "scancel"
