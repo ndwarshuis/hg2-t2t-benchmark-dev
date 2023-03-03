@@ -14,7 +14,7 @@ default-resources:
   - mem_mb=1000
   - time="8:0:0"
 set-resources:
-  - run_dipcall:mem_mb=64000
+  - run_dipcall:mem_mb=32000
 set-threads:
   - run_dipcall=4
 restart-times: 3
