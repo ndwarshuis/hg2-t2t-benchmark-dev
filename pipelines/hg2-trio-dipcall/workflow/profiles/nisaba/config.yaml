@@ -15,9 +15,8 @@ default-resources:
   - time="8:0:0"
 set-resources:
   - run_dipcall:mem_mb=64000
-# set-threads:
-#   - get_vcf_labels=1
-#   - train_ebm=4
+set-threads:
+  - run_dipcall=4
 restart-times: 3
 max-jobs-per-second: 10
 max-status-checks-per-second: 1

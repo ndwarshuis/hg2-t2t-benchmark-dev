@@ -41,7 +41,7 @@ rule index_child_asm:
     input:
         rules.download_child_asm.output,
     output:
-        res_asm_dir / "child" / "{child_hap}.fai",
+        rules.download_child_asm.output + ".fai"
     conda:
         "envs/dipcall.yml"
     shell:
