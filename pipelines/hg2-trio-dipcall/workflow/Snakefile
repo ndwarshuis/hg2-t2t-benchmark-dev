@@ -41,7 +41,7 @@ rule index_child_asm:
     input:
         rules.download_child_asm.output,
     output:
-        res_asm_dir / "child" / "{child_hap}.mmi",
+        res_asm_dir / "child" / "{child_hap}.fai",
     conda:
         "envs/dipcall.yml"
     shell:
@@ -78,12 +78,12 @@ rule run_dipcall:
             for k, h in [("h1", "pat"), ("h2", "mat")]
         },
     output:
-        vcf=res_dip_dir / "dip.vcf.gz",
-        make=res_dip_dir / "dip.mak",
+        vcf=res_dip_dir / "hg2.dip.vcf.gz",
+        make=res_dip_dir / "hg2.dip.mak",
     conda:
         "envs/dipcall.yml"
     params:
-        prefix=lambda _, output: re.sub("\..*?", "", output[0]),
+        prefix=lambda _, output: re.sub("\.dip.*", "", output.make),
     log:
         res_dip_dir / "dip.log",
     threads: 8
