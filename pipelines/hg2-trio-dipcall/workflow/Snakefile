@@ -92,7 +92,6 @@ rule run_dipcall:
         run-dipcall \
             -z 200000,10000 \
             -t {threads} \
-            -d {input.ref_idx} \
             {params.prefix} \
             {input.ref} \
             {input.h1} \
