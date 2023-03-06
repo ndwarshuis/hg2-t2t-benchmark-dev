@@ -18,7 +18,7 @@ set-resources:
 # set-threads:
 #   - get_vcf_labels=1
 #   - train_ebm=4
-restart-times: 3
+restart-times: 1
 max-jobs-per-second: 10
 max-status-checks-per-second: 1
 local-cores: 1
