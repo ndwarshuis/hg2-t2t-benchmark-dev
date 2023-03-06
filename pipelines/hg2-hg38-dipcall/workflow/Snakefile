@@ -30,10 +30,16 @@ rule download_ref:
         src_dir / "references" / "GRCh38.fa",
     params:
         url="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
-    conda:
-        "envs/dipcall.yml"
     shell:
         "curl -Ss -q -L {params.url} | gunzip -c > {output}"
+
+rule download_PAR:
+    output:
+        src_dir / "references" / "hg38_par.bed"
+    params:
+        url="https://github.com/lh3/dipcall/blob/master/data/hs38.PAR.bed"
+    shell:
+        "curl -Ss -q -L -o {output} {params.url}"
 
 
 rule list_asm_chrs:
@@ -78,11 +84,13 @@ rule index_ref:
         """
 
 
+# TODO add par for HG2 (https://github.com/lh3/dipcall/blob/master/data/hs38.PAR.bed)
 rule run_dipcall:
     input:
         **{h: expand(rules.filter_asm.output, hap=h) for h in HAPLOTYPES},
         ref=rules.download_ref.output,
         ref_idx=rules.index_ref.output,
+        par=rules.download_PAR.output,
     output:
         **{
             k: res_dip_dir / f"hg2.{x}"
@@ -100,12 +108,13 @@ rule run_dipcall:
         prefix=lambda _, output: re.sub("\.dip.*", "", output.make),
     log:
         res_dip_dir / "dip.log",
-    threads: 8
+    threads: 4
     shell:
         """
         run-dipcall \
             -z 200000,10000 \
             -t {threads} \
+            -x {input.par} \
             {params.prefix} \
             {input.ref} \
             {input.pat} \
