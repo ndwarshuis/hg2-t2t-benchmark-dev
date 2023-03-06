@@ -27,13 +27,13 @@ rule download_hg2_asm:
 # not bgzip compressed :(
 rule download_ref:
     output:
-        src_dir / "references" / "GRCh38.fa.gz",
+        src_dir / "references" / "GRCh38.fa",
     params:
         url="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
     conda:
         "envs/dipcall.yml"
     shell:
-        "curl -Ss -q -L -o {output} {params.url}"
+        "curl -Ss -q -L {params.url} | gunzip -c > {output}"
 
 
 rule list_asm_chrs:
