@@ -33,7 +33,7 @@ rule download_ref:
     conda:
         "envs/dipcall.yml"
     shell:
-        "curl -Ss -q -L {params.url} | gunzip -c | bgzip -c > {output}"
+        "curl -Ss -q -L {params.url}"
 
 
 rule list_asm_chrs:
