@@ -1,0 +1,120 @@
+from pathlib import Path
+import re
+
+src_dir = Path("resources")
+src_asm_dir = src_dir / "asm"
+
+res_dir = Path("results")
+res_asm_dir = res_dir / "asm"
+res_dip_dir = res_dir / "dipcall"
+
+
+HAPLOTYPES = ["pat", "mat"]
+
+
+# not compressed :(
+rule download_hg2_asm:
+    output:
+        src_dir / "asm" / "hg2.fa.gz",
+    params:
+        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/scratch/HG002/assemblies/drafts/assembly.v0.7.fasta",
+    conda:
+        "envs/dipcall.yml"
+    shell:
+        "curl -Ss -q -L {params.url} | bgzip -c > {output}"
+
+
+# not bgzip compressed :(
+rule download_ref:
+    output:
+        src_dir / "references" / "GRCh38.fa.gz",
+    params:
+        url="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
+    conda:
+        "envs/dipcall.yml"
+    shell:
+        "curl -Ss -q -L {params.url} | gunzip -c | bgzip -c > {output}"
+
+
+rule list_asm_chrs:
+    input:
+        rules.download_hg2_asm.output,
+    output:
+        res_asm_dir / "chrs.txt",
+    shell:
+        "gunzip -c {input} | grep -E '(MAT|PAT)' | sed 's/>//' > {output}"
+
+
+rule filter_asm:
+    input:
+        fa=rules.download_hg2_asm.output,
+        regions=rules.list_asm_chrs.output,
+    output:
+        res_asm_dir / "{hap}.fa.gz",
+    conda:
+        "envs/dipcall.yml"
+    params:
+        HAP=lambda wildcards: wildcards.hap.upper(),
+    shell:
+        """
+        samtools faidx {input.fa} \
+        $(grep {params.HAP} {input.regions} | tr '\n' ' ') | \
+        sed 's/>\(.*\)_.*/>\\1/' | \
+        bgzip -c \
+        > {output}
+        """
+
+
+rule index_ref:
+    input:
+        rules.download_ref.output,
+    output:
+        rules.download_ref.output[0] + ".fai",
+    conda:
+        "envs/dipcall.yml"
+    shell:
+        """
+        samtools faidx {input}
+        """
+
+
+rule run_dipcall:
+    input:
+        **{h: expand(rules.filter_asm.output, hap=h) for h in HAPLOTYPES},
+        ref=rules.download_ref.output,
+        ref_idx=rules.index_ref.output,
+    output:
+        **{
+            k: res_dip_dir / f"hg2.{x}"
+            for k, x in [
+                ("pat_paf", "hap1.paf.gz"),
+                ("mat_paf", "hap2.paf.gz"),
+                ("vcf", "dip.vcf.gz"),
+                ("bed", "dip.bed"),
+                ("make", "dip.make"),
+            ]
+        },
+    conda:
+        "envs/dipcall.yml"
+    params:
+        prefix=lambda _, output: re.sub("\.dip.*", "", output.make),
+    log:
+        res_dip_dir / "dip.log",
+    threads: 8
+    shell:
+        """
+        run-dipcall \
+            -z 200000,10000 \
+            -t {threads} \
+            {params.prefix} \
+            {input.ref} \
+            {input.pat} \
+            {input.mat} \
+            > {output.make}
+        make -j{threads} -f {output.make}
+        """
+
+
+rule all:
+    input:
+        rules.run_dipcall.output,
