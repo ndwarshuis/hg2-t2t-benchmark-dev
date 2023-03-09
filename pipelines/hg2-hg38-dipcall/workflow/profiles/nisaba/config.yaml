@@ -13,12 +13,10 @@ default-resources:
   - partition=batch
   - mem_mb=1000
   - time="8:0:0"
-set-resources:
-  - run_dipcall:mem_mb=64000
 # set-threads:
 #   - get_vcf_labels=1
 #   - train_ebm=4
-restart-times: 1
+restart-times: 0
 max-jobs-per-second: 10
 max-status-checks-per-second: 1
 local-cores: 1
@@ -29,3 +27,4 @@ rerun-incomplete: True
 printshellcmds: True
 scheduler: greedy
 use-conda: True
+cluster-cancel: scancel

@@ -108,19 +108,21 @@ rule run_dipcall:
         prefix=lambda _, output: re.sub("\.dip.*", "", output.make),
     log:
         res_dip_dir / "dip.log",
-    threads: 4
+    threads: 20
+    resources:
+        mem_mb=400000
     shell:
         """
         run-dipcall \
             -z 200000,10000 \
-            -t {threads} \
+            -t 5 \
             -x {input.par} \
             {params.prefix} \
             {input.ref} \
             {input.pat} \
             {input.mat} \
             > {output.make}
-        make -j{threads} -f {output.make}
+        make -j4 -f {output.make}
         """
 
 
