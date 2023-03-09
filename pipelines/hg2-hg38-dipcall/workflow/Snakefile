@@ -65,7 +65,6 @@ rule filter_asm:
         """
         samtools faidx {input.fa} \
         $(grep {params.HAP} {input.regions} | tr '\n' ' ') | \
-        sed 's/>\(.*\)_.*/>\\1/' | \
         bgzip -c \
         > {output}
         """
