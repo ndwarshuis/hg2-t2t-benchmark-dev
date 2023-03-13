@@ -65,44 +65,35 @@ rule download_ref:
         "curl -Ss -q -L {params.url} > {output}"
 
 
-rule download_query_vcf:
-    output:
-        src_query_dir / "query.vcf.gz",
-    params:
-        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/SupplementaryFiles/HG002_GRCh38_1_22_v4.2.1_benchmark_phased_MHCassembly_StrandSeqANDTrio.vcf.gz",
-    shell:
-        "curl -Ss -q -L -o {output} {params.url}"
-
-
-use rule download_query_vcf as download_query_bed with:
+use rule download_ref as download_query_bed with:
     output:
         src_query_dir / "query.bed",
     params:
         url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/draft_benchmarksets/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k_smvar-exclude/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.benchmark.bed",
 
 
-use rule download_query_vcf as download_bench_vcf with:
+use rule download_ref as download_bench_vcf with:
     output:
         src_bench_dir / "bench.vcf.gz",
     params:
-        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/SupplementaryFiles/HG002_GRCh38_1_22_v4.2.1_benchmark_phased_MHCassembly_StrandSeqANDTrio.vcf.gz",
 
 
-use rule download_query_vcf as download_bench_bed with:
+use rule download_ref as download_bench_bed with:
     output:
         src_bench_dir / "bench.bed",
     params:
         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
 
 
-use rule download_query_vcf as download_paftools with:
+use rule download_ref as download_paftools with:
     output:
         tools_dir / "minimap" / "paftools.js",
     params:
         url="https://raw.githubusercontent.com/lh3/minimap2/16b8d50199d607ba20754aaf5a7d111b644b66c0/misc/paftools.js",
 
 
-use rule download_query_vcf as download_PAR with:
+use rule download_ref as download_PAR with:
     output:
         src_dir / "references" / "hg38_par.bed",
     params:
@@ -334,7 +325,7 @@ rule merge_gt_errors:
         """
         cat {input} | \
         sed 's/\t/;/g4' | \
-        bedtools merge -i stdin -c 4 -o collapse -delim '|' \
+        bedtools merge -i stdin -c 4 -o collapse -delim '~' \
         > {output}
         """
 
