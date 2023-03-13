@@ -12,20 +12,64 @@ res_dir = Path("results")
 tools_dir = res_dir / "tools"
 
 res_inter_dir = res_dir / "intermediate"
-res_paf_dir = res_inter_dir / "paf"
+res_asm_dir = res_inter_dir / "asm"
+res_hg2_dir = res_asm_dir / "hg2"
+res_hg38_dir = res_asm_dir / "hg38"
+res_dip_dir = res_inter_dir / "dipcall"
 res_query_dir = res_inter_dir / "query"
+res_bench_dir = res_inter_dir / "bench"
 res_comp_dir = res_inter_dir / "comparison"
 res_compbed_dir = res_comp_dir / "bed"
 res_proj_dir = res_inter_dir / "projections"
 
 final_dir = res_dir / "final"
 
+HAPLOTYPES = ["pat", "mat"]
+
+
+################################################################################
+# download a bunch of stuff
+
+
+rule clone_liftover_scripts:
+    output:
+        directory(res_dir / "tools/liftover"),
+    shell:
+        """
+        git clone \
+        --depth 1 \
+        --branch v0.2.0 \
+        https://github.com/mobinasri/flagger.git \
+        {output}
+        """
+
+
+# not compressed :(
+rule download_hg2_asm:
+    output:
+        src_dir / "asm" / "hg2.fa.gz",
+    params:
+        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/scratch/HG002/assemblies/drafts/assembly.v0.7.fasta",
+    conda:
+        "envs/dipcall.yml"
+    shell:
+        "curl -Ss -q -L {params.url} | bgzip -c > {output}"
+
+
+rule download_ref:
+    output:
+        src_dir / "references" / "GRCh38.fa.gz",
+    params:
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
+    shell:
+        "curl -Ss -q -L {params.url} > {output}"
+
 
 rule download_query_vcf:
     output:
         src_query_dir / "query.vcf.gz",
     params:
-        url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/asm_varcalls/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.dip.vcf.gz",
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/SupplementaryFiles/HG002_GRCh38_1_22_v4.2.1_benchmark_phased_MHCassembly_StrandSeqANDTrio.vcf.gz",
     shell:
         "curl -Ss -q -L -o {output} {params.url}"
 
@@ -35,22 +79,6 @@ use rule download_query_vcf as download_query_bed with:
         src_query_dir / "query.bed",
     params:
         url="https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/draft_benchmarksets/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k_smvar-exclude/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.benchmark.bed",
-
-
-def paf_url(wildcards):
-    h = wildcards.hap
-    if h == "pat":
-        return "https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/asm_varcalls/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.hap1.paf.gz"
-    elif h == "mat":
-        return "https://giab-data.s3.amazonaws.com/defrabb_runs/20221101_v0.010-HG002-SV/results/asm_varcalls/GRCh38_HG002-verrkoV1.1-V0.6-dipz2k/GRCh38_HG2-verrkoV1.1-V0.6_dipcall-z2k.hap2.paf.gz"
-    assert False, "are you typing with 3.14 fingers? (wrong hap)"
-
-
-use rule download_query_vcf as download_paf with:
-    output:
-        src_dir / "paf" / "{hap}.paf.gz",
-    params:
-        url=paf_url,
 
 
 use rule download_query_vcf as download_bench_vcf with:
@@ -67,29 +95,73 @@ use rule download_query_vcf as download_bench_bed with:
         url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
 
 
-use rule download_query_vcf as download_ref with:
+use rule download_query_vcf as download_paftools with:
     output:
-        src_dir / "references" / "GRCh38.fa.gz",
+        tools_dir / "minimap" / "paftools.js",
     params:
-        url="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
+        url="https://raw.githubusercontent.com/lh3/minimap2/16b8d50199d607ba20754aaf5a7d111b644b66c0/misc/paftools.js",
+
+
+use rule download_query_vcf as download_PAR with:
+    output:
+        src_dir / "references" / "hg38_par.bed",
+    params:
+        url="https://github.com/lh3/dipcall/blob/master/data/hs38.PAR.bed",
+
+
+################################################################################
+# run dipcall
+
+
+rule list_asm_chrs:
+    input:
+        rules.download_hg2_asm.output,
+    output:
+        res_hg2_dir / "chrs.txt",
+    shell:
+        "gunzip -c {input} | grep -E '(MAT|PAT)' | sed 's/>//' > {output}"
+
+
+# for testing
+rule list_test_asm_chrs:
+    input:
+        rules.list_asm_chrs.output,
+    output:
+        res_hg2_dir / "chrs_filtered.txt",
+    shell:
+        "grep -E '(chr21|chr22)' {input} > {output}"
+
+
+rule filter_asm:
+    input:
+        fa=rules.download_hg2_asm.output,
+        # regions=rules.list_asm_chrs.output,
+        regions=rules.list_test_asm_chrs.output,
+    output:
+        res_hg2_dir / "{hap}.fa.gz",
+    conda:
+        "envs/dipcall.yml"
+    params:
+        HAP=lambda wildcards: wildcards.hap.upper(),
+    shell:
+        """
+        samtools faidx {input.fa} \
+        $(grep {params.HAP} {input.regions} | tr '\n' ' ') | \
+        bgzip -c \
+        > {output}
+        """
 
 
 rule unzip_ref:
     input:
         rules.download_ref.output,
     output:
-        res_dir / "references" / "GRCh38.fa",
+        res_hg38_dir / "ref_filtered.fa",
+    conda:
+        "envs/dipcall.yml"
     shell:
-        "gunzip -c {input} > {output}"
-
-
-rule unzip_paf:
-    input:
-        rules.download_paf.output,
-    output:
-        res_paf_dir / "{hap}.paf",
-    shell:
-        "gunzip -c {input} > {output}"
+        "samtools faidx {input} chr21 chr22 > {output}"
+        # "gunzip -c {input} > {output}"
 
 
 rule index_ref:
@@ -98,19 +170,64 @@ rule index_ref:
     output:
         rules.unzip_ref.output[0] + ".fai",
     conda:
-        "envs/samtools.yml"
+        "envs/dipcall.yml"
     shell:
-        "samtools faidx {input} -o {output}"
+        """
+        samtools faidx {input}
+        """
+
+
+rule run_dipcall:
+    input:
+        **{h: expand(rules.filter_asm.output, hap=h) for h in HAPLOTYPES},
+        ref=rules.unzip_ref.output,
+        ref_idx=rules.index_ref.output,
+        par=rules.download_PAR.output,
+    output:
+        **{
+            k: res_dip_dir / f"hg2.{x}"
+            for k, x in [
+                ("pat_paf", "hap1.paf.gz"),
+                ("mat_paf", "hap2.paf.gz"),
+                ("vcf", "dip.vcf.gz"),
+                ("bed", "dip.bed"),
+                ("make", "dip.make"),
+            ]
+        },
+    conda:
+        "envs/dipcall.yml"
+    params:
+        prefix=lambda _, output: re.sub("\.dip.*", "", output.make),
+    log:
+        res_dip_dir / "dip.log",
+    threads: 20
+    shell:
+        """
+        run-dipcall \
+            -z 200000,10000 \
+            -t 5 \
+            -x {input.par} \
+            {params.prefix} \
+            {input.ref} \
+            {input.pat} \
+            {input.mat} \
+            > {output.make}
+        make -j4 -f {output.make}
+        """
+
+
+################################################################################
+# run liftover
 
 
 # for testing
-rule filter_query_vcf:
+rule filter_bench_vcf:
     input:
-        rules.download_query_vcf.output,
+        rules.download_bench_vcf.output,
     output:
-        res_query_dir / "filtered.vcf.gz",
+        res_bench_dir / "filtered.vcf.gz",
     conda:
-        "envs/samtools.yml"
+        "envs/dipcall.yml"
     shell:
         """
         gunzip -c {input} | \
@@ -119,32 +236,14 @@ rule filter_query_vcf:
         """
 
 
-# for testing
-rule filter_paf:
-    input:
-        rules.unzip_paf.output,
-    output:
-        res_paf_dir / "{hap}_filtered.paf",
-    shell:
-        "grep -E '^chr(21|22)' {input} > {output}"
-
-
-# for testing
-use rule filter_query_vcf as filter_bench_vcf with:
-    input:
-        rules.download_bench_vcf.output,
-    output:
-        res_dir / "filtered.vcf.gz",
-
-
 rule run_happy:
     input:
         refi=rules.index_ref.output,
         ref=rules.unzip_ref.output,
         bench_vcf=rules.filter_bench_vcf.output,
         bench_bed=rules.download_bench_bed.output,
-        query_vcf=rules.filter_query_vcf.output,
-        query_bed=rules.download_query_bed.output,
+        query_vcf=rules.run_dipcall.output.vcf,
+        query_bed=rules.run_dipcall.output.bed,
     output:
         res_comp_dir / "happy" / "happy.vcf.gz",
     params:
@@ -224,41 +323,69 @@ use rule filter_fp_errors as filter_fn_errors with:
         label="FN",
 
 
+rule merge_gt_errors:
+    input:
+        rules.filter_gt_errors.output.gt,
+    output:
+        res_compbed_dir / "gt_errors_collapsed.bed",
+    conda:
+        "envs/bedtools.yml"
+    shell:
+        """
+        cat {input} | \
+        sed 's/\t/;/g4' | \
+        bedtools merge -i stdin -c 4 -o collapse -delim '|' \
+        > {output}
+        """
+
+
+use rule merge_gt_errors as merge_fp_errors with:
+    input:
+        rules.filter_fp_errors.output,
+    output:
+        res_compbed_dir / "fp_errors_collapsed.bed",
+
+
+use rule merge_gt_errors as merge_fn_errors with:
+    input:
+        rules.filter_fn_errors.output,
+    output:
+        res_compbed_dir / "fn_errors_collapsed.bed",
+
+
 def liftover_input(wildcards):
     l = wildcards.label
     if l == "fp":
-        return rules.filter_fp_errors.output
+        return rules.merge_fp_errors.output
     elif l == "fn":
-        return rules.filter_fn_errors.output
+        return rules.merge_fn_errors.output
     elif l == "gt":
-        return rules.filter_gt_errors.output.gt
+        return rules.merge_gt_errors.output
     else:
         assert False, "where did you learn to type? (wrong label)"
 
 
-rule clone_liftover_scripts:
+def paf_input(wildcards):
+    h = wildcards.hap
+    if h == "pat":
+        return rules.run_dipcall.output.pat_paf
+    elif h == "mat":
+        return rules.run_dipcall.output.mat_paf
+    assert False, "are you typing with 3.14 fingers? (wrong hap)"
+
+
+rule unzip_paf:
+    input:
+        paf_input,
     output:
-        directory(res_dir / "tools/liftover"),
+        res_inter_dir / "paf" / "{hap}.paf",
     shell:
-        """
-        git clone \
-        --depth 1 \
-        --branch v0.2.0 \
-        https://github.com/mobinasri/flagger.git \
-        {output}
-        """
-
-
-# use rule download_query_vcf as download_paftools with:
-#     output:
-#         tools_dir / "minimap" / "paftools.js",
-#     params:
-#         url="https://github.com/lh3/minimap2/blob/16b8d50199d607ba20754aaf5a7d111b644b66c0/misc/paftools.js",
+        "gunzip -c {input} > {output}"
 
 
 rule run_liftover:
     input:
-        paf=rules.filter_paf.output,
+        paf=rules.unzip_paf.output,
         bed=liftover_input,
         tooldir=rules.clone_liftover_scripts.output,
     output:
@@ -296,3 +423,13 @@ rule all:
             hap=["mat", "pat"],
             label=["fp", "fn", "gt"],
         ),
+
+
+################################################################################
+# rule graveyard
+#
+# use rule download_query_vcf as download_paf with:
+#     output:
+#         src_dir / "paf" / "{hap}.bam.gz",
+#     params:
+#         url=paf_url,
