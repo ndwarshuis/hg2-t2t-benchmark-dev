@@ -9,8 +9,8 @@ res_asm_dir = res_dir / "asm"
 res_dip_dir = res_dir / "dipcall" / "{parent}"
 
 
-def child_url(wildcards):
-    hap = wildcards.child_hap
+def verkko_url(wildcards):
+    hap = wildcards.verkko_hap
     if hap == "pat":
         return "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.7/v0.7.pat_X_EBV_MT.fasta"
     elif hap == "mat":
@@ -19,64 +19,79 @@ def child_url(wildcards):
         assert False, "Petrucci is not impressed with your fingers (wrong hap)"
 
 
-def child_hap(parent):
-    if parent == "father":
+def verkko_hap(parent):
+    if parent in ["hg3", "hg2_pat"]:
         return "pat"
-    elif parent == "mother":
+    elif parent in ["hg4", "hg2_mat"]:
         return "mat"
     else:
         assert False, "Even Guido can type better than you (wrong parent)"
 
 
-rule download_child_asm:
+def hifiasm_asm(parent):
+    if parent in ["hg2_pat", "hg2_mat"]:
+        return "hg2"
+    elif parent == "hg3":
+        return "hg3"
+    elif parent == "hg4":
+        return "hg4"
+    else:
+        assert False, "This sounds like LOLCODE (wrong parent)"
+
+
+rule download_verkko_asm:
     output:
-        src_asm_dir / "child" / "{child_hap}.fa",
+        src_asm_dir / "verkko" / "{verkko_hap}_verkko.fa",
     params:
-        url=child_url,
+        url=verkko_url,
     shell:
         "curl -Ss -q -L -o {output} {params.url}"
 
 
-rule index_child_asm:
+rule index_verkko_asm:
     input:
-        rules.download_child_asm.output,
+        rules.download_verkko_asm.output,
     output:
-        rules.download_child_asm.output[0] + ".fai"
+        rules.download_verkko_asm.output[0] + ".fai",
     conda:
         "envs/dipcall.yml"
     shell:
         "samtools faidx {input} > {output}"
 
 
-# NOTE: the parental asms are on google drive and need to be downloaded manually
+# NOTE: the hifi asms are on google drive and need to be downloaded manually
+# HG2 hap1: https://drive.google.com/file/d/1RCbl4soA5QCCm9LSdxiZDpe5y9qWnPS0/view
+# HG2 hap2: https://drive.google.com/file/d/14HNGcS2IMNYplOBRI06fRqcE2cjr214q/view
 # HG3 hap1: https://drive.google.com/file/d/1qvrmf68uJ5VAesKNB_jdfmXuudCZd0Ys/view
 # HG3 hap2: https://drive.google.com/file/d/1Jhc_erBgPVYapG4kPQt7LWJKIu4iagdk/view
 # HG4 hap1: https://drive.google.com/file/d/1qgJf0LhjumYIp6XTzxL8OnjobwcQvDBd/view
 # HG4 hap2: https://drive.google.com/file/d/1-gpix77eg7F9wFYRDS1ndD_oMwhxEYsB/view
-rule laboriously_obtain_parental_asms:
+rule laboriously_obtain_hifiasm_asms:
     output:
-        src_asm_dir / "parents" / "{parent}" / "{parent_hap}.fa.gz",
+        src_asm_dir / "parents" / "{parent}" / "{hifiasm_hap}.fa.gz",
 
 
 rule run_dipcall:
     input:
         unpack(
-            lambda wildcards: {
-                k: expand(path, child_hap=child_hap(wildcards.parent))
-                for k, path in [
-                    ("ref", rules.download_child_asm.output),
-                    ("ref_idx", rules.index_child_asm.output),
-                ]
+            lambda w: {
+                **{
+                    k: expand(path, verkko_hap=verkko_hap(w.parent))
+                    for k, path in [
+                        ("ref", rules.download_verkko_asm.output),
+                        ("ref_idx", rules.index_verkko_asm.output),
+                    ]
+                },
+                **{
+                    k: expand(
+                        rules.laboriously_obtain_hifiasm_asms.output,
+                        hifiasm_hap=h,
+                        parent=hifiasm_asm(w.parent),
+                    )
+                    for k, h in [("h1", "pat"), ("h2", "mat")]
+                },
             }
         ),
-        **{
-            k: expand(
-                rules.laboriously_obtain_parental_asms.output,
-                parent_hap=h,
-                allow_missing=True,
-            )
-            for k, h in [("h1", "pat"), ("h2", "mat")]
-        },
     output:
         vcf=res_dip_dir / "hg2.dip.vcf.gz",
         make=res_dip_dir / "hg2.dip.mak",
@@ -86,22 +101,32 @@ rule run_dipcall:
         prefix=lambda _, output: re.sub("\.dip.*", "", output.make),
     log:
         res_dip_dir / "dip.log",
-    threads: 8
+    threads: 20
+    resources:
+        mem_mb=256000,
     shell:
         """
         run-dipcall \
             -z 200000,10000 \
-            -t {threads} \
+            -t 5 \
             {params.prefix} \
             {input.ref} \
             {input.h1} \
             {input.h2} \
             > {output.make}
 
-        make -j{threads} -f {output.make}
+        make -j4 -f {output.make}
         """
 
 
 rule all:
     input:
-        expand(rules.run_dipcall.output, parent=["mother", "father"]),
+        expand(
+            rules.run_dipcall.output,
+            parent=[
+                "hg3",
+                "hg4",
+                "hg2_pat",
+                "hg2_mat",
+            ],
+        ),

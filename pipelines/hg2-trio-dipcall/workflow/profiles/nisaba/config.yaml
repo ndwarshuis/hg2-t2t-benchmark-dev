@@ -13,11 +13,7 @@ default-resources:
   - partition=batch
   - mem_mb=1000
   - time="8:0:0"
-set-resources:
-  - run_dipcall:mem_mb=32000
-set-threads:
-  - run_dipcall=4
-restart-times: 3
+restart-times: 0
 max-jobs-per-second: 10
 max-status-checks-per-second: 1
 local-cores: 1
