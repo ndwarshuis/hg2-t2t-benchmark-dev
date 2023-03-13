@@ -20,9 +20,9 @@ res_query_dir = res_inter_dir / "query"
 res_bench_dir = res_inter_dir / "bench"
 res_comp_dir = res_inter_dir / "comparison"
 res_compbed_dir = res_comp_dir / "bed"
-res_proj_dir = res_inter_dir / "projections"
 
 final_dir = res_dir / "final"
+res_proj_dir = final_dir / "projections"
 
 HAPLOTYPES = ["pat", "mat"]
 
@@ -389,8 +389,8 @@ rule run_liftover:
         bed=liftover_input,
         tooldir=rules.clone_liftover_scripts.output,
     output:
-        projectable=res_proj_dir / "projectable_{hap}_{label}.bed",
-        projected=res_proj_dir / "projected_{hap}_{label}.bed",
+        projectable=final_dir / "projectable_{hap}_{label}.bed",
+        projected=final_dir / "projected_{hap}_{label}.bed",
     threads: 8
     shell:
         """
@@ -404,22 +404,10 @@ rule run_liftover:
         """
 
 
-rule unsquish_projections:
-    input:
-        rules.run_liftover.output.projected,
-    output:
-        final_dir / "projected_{hap}_{label}.bed",
-    shell:
-        "cat {input} | tr ';' '\t' > {output}"
-
-
-# TODO if we want we can filter the lifted beds after the fact
-
-
 rule all:
     input:
         expand(
-            rules.unsquish_projections.output,
+            rules.run_liftover.output,
             hap=["mat", "pat"],
             label=["fp", "fn", "gt"],
         ),
