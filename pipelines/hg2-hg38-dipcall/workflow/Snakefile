@@ -24,20 +24,29 @@ rule download_hg2_asm:
         "curl -Ss -q -L {params.url} | bgzip -c > {output}"
 
 
-# not bgzip compressed :(
 rule download_ref:
     output:
         src_dir / "references" / "GRCh38.fa.gz",
     params:
-        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz"
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
     shell:
         "curl -Ss -q -L -o {output} {params.url}"
 
+
+rule unzip_ref:
+    input:
+        rules.download_ref.output,
+    output:
+        res_asm_dir / "ref.fa",
+    shell:
+        "gunzip -c {input} > {output}"
+
+
 rule download_PAR:
     output:
-        src_dir / "references" / "hg38_par.bed"
+        src_dir / "references" / "hg38_par.bed",
     params:
-        url="https://github.com/lh3/dipcall/blob/master/data/hs38.PAR.bed"
+        url="https://github.com/lh3/dipcall/blob/master/data/hs38.PAR.bed",
     shell:
         "curl -Ss -q -L -o {output} {params.url}"
 
@@ -72,9 +81,9 @@ rule filter_asm:
 
 rule index_ref:
     input:
-        rules.download_ref.output,
+        rules.unzip_ref.output,
     output:
-        rules.download_ref.output[0] + ".fai",
+        rules.unzip_ref.output[0] + ".fai",
     conda:
         "envs/dipcall.yml"
     shell:
@@ -109,7 +118,7 @@ rule run_dipcall:
         res_dip_dir / "dip.log",
     threads: 20
     resources:
-        mem_mb=400000
+        mem_mb=400000,
     shell:
         """
         run-dipcall \
