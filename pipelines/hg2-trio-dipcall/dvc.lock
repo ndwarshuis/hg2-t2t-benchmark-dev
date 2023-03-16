@@ -1,0 +1,9 @@
+schema: '2.0'
+stages:
+  snakemake:
+    cmd: snakemake --profile workflow/profiles/nisaba
+    outs:
+    - path: results/dipcall
+      md5: 47dbe366edf1be1d4160819841531980.dir
+      size: 14988676168
+      nfiles: 88
