@@ -1,4 +1,5 @@
 from pathlib import Path
+from os.path import dirname
 
 # query files from here: https://drive.google.com/drive/u/1/folders/1lqGkHjY7YL0Dvm-YWRpaIYDQILAo3P8K
 # pafs from here: https://drive.google.com/drive/u/1/folders/12_Y5Gvx50g6t9JVsRWdXWMp6L9tb3jJj
@@ -98,6 +99,13 @@ use rule download_ref as download_PAR with:
         src_dir / "references" / "hg38_par.bed",
     params:
         url="https://github.com/lh3/dipcall/blob/master/data/hs38.PAR.bed",
+
+
+use rule download_ref as download_strats with:
+    output:
+        src_dir / "references" / "strats.tar.gz",
+    params:
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.1/v3.1-genome-stratifications-GRCh38.tar.gz",
 
 
 ################################################################################
@@ -227,6 +235,22 @@ rule filter_bench_vcf:
         """
 
 
+rule unzip_strats:
+    input:
+        rules.download_strats.output,
+    output:
+        res_hg38_dir
+        / "strats"
+        / "v3.1-GRCh38-stratifications-all-except-genome-specific-stratifications.tsv",
+    params:
+        dir=lambda _, output: dirname(output[0]),
+    shell:
+        """
+        mkdir -p {params.dir} &&
+        tar xzf {input} --directory {params.dir} --strip-components=1
+        """
+
+
 rule run_happy:
     input:
         refi=rules.index_ref.output,
@@ -235,6 +259,7 @@ rule run_happy:
         bench_bed=rules.download_bench_bed.output,
         query_vcf=rules.run_dipcall.output.vcf,
         query_bed=rules.run_dipcall.output.bed,
+        strats=rules.unzip_strats.output,
     output:
         res_comp_dir / "happy" / "happy.vcf.gz",
     params:
@@ -248,9 +273,10 @@ rule run_happy:
         """
         HGREF={input.ref} \
         hap.py \
-        --engine vcfeval \
+        --engine xcmp \
         --verbose \
         --threads {threads} \
+        --stratification {input.strats} \
         -f {input.bench_bed} \
         -o {params.prefix} \
         -T {input.query_bed} \
@@ -259,9 +285,48 @@ rule run_happy:
         """
 
 
-rule vcf_to_bed:
+rule index_dipcall_vcf:
+    input:
+        rules.run_dipcall.output.vcf,
+    output:
+        rules.run_dipcall.output.vcf + ".tbi",
+    conda:
+        "envs/dipcall.yml"
+    shell:
+        "tabix {input}"
+
+
+use rule index_dipcall_vcf as index_happy_vcf with:
     input:
         rules.run_happy.output,
+    output:
+        rules.run_happy.output[0] + ".tbi",
+
+
+# happy sadly will strip the phasing information from the output vcf, so add
+# it back here
+rule annotate_happy_vcf:
+    input:
+        dipcall=rules.run_dipcall.output.vcf,
+        dipcall_tbx=rules.index_dipcall_vcf.output,
+        happy=rules.run_happy.output,
+        happy_tbx=rules.index_happy_vcf.output,
+    output:
+        res_compbed_dir / "annotated.vcf.gz",
+    conda:
+        "envs/bcftools.yml"
+    shell:
+        """
+        bcftools merge {input.dipcall} {input.happy} | \
+        grep -v './\.:\.    ./\.:\.'  | \
+        bgzip -c \
+         > {output}
+        """
+
+
+rule vcf_to_bed:
+    input:
+        rules.annotate_happy_vcf.output,
     output:
         res_compbed_dir / "all_errors.bed",
     shell:
@@ -269,7 +334,7 @@ rule vcf_to_bed:
         gunzip -c {input} | \
         sed '/^#/d' | \
         sed '/UNK/d' | \
-        awk 'OFS="\t" {{ print $1, $2-1, $2+length($4)-1, $4, $5, $9, $10, $11 }}' \
+        awk 'OFS="\t" {{ print $1, $2-1, $2+length($4)-1, $4, $5, $8, $9, $10, $11, $12 }}' \
         > {output}
         """
 
@@ -293,7 +358,7 @@ rule filter_fp_errors:
     output:
         res_compbed_dir / "fp_errors.bed",
     params:
-        col=8,
+        col=10,
         label="FP",
     shell:
         """
@@ -310,7 +375,7 @@ use rule filter_fp_errors as filter_fn_errors with:
     output:
         res_compbed_dir / "fn_errors.bed",
     params:
-        col=7,
+        col=9,
         label="FN",
 
 
