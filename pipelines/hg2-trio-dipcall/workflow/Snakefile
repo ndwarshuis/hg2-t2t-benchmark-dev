@@ -94,6 +94,7 @@ rule run_dipcall:
         ),
     output:
         vcf=res_dip_dir / "hg2.dip.vcf.gz",
+        pair=res_dip_dir / "hg2.pair.vcf.gz",
         make=res_dip_dir / "hg2.dip.mak",
     conda:
         "envs/dipcall.yml"
@@ -118,11 +119,30 @@ rule run_dipcall:
         make -j4 -f {output.make}
         """
 
+# dipcall apparently doesn't fully work unless the chromosome names are like "chr[XY0-9]"
+# (these have "_MATERNAL" or something after them). So fix it here (which is basically just
+# the last step in the dipcall makefile
+rule fix_dipcall_vcf:
+    input:
+        rules.run_dipcall.output.pair,
+    output:
+        res_dip_dir / "hg2.fixed.vcf.gz",
+    conda:
+       "envs/dipcall.yml"
+    shell:
+       """
+       gunzip -c {input} | \
+       sed 's/^\(chr[^_]\+\)_[^\t]*\t/\\1\t/' | \
+       dipcall-aux.js vcfpair - | \
+       bgzip -c \
+       > {output}
+       """
+
 
 rule all:
     input:
         expand(
-            rules.run_dipcall.output,
+            rules.fix_dipcall_vcf.output,
             parent=[
                 "hg3",
                 "hg4",
