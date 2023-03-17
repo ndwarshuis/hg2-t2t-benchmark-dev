@@ -38,8 +38,19 @@ rule unzip_ref:
         rules.download_ref.output,
     output:
         res_asm_dir / "ref.fa",
+    conda:
+        "envs/dipcall.yml"
     shell:
-        "gunzip -c {input} > {output}"
+        "samtools faidx {input} chr21 > {output}"
+
+
+# rule unzip_ref:
+#     input:
+#         rules.download_ref.output,
+#     output:
+#         res_asm_dir / "ref.fa",
+#     shell:
+#         "gunzip -c {input} > {output}"
 
 
 rule download_PAR:
@@ -73,7 +84,7 @@ rule filter_asm:
     shell:
         """
         samtools faidx {input.fa} \
-        $(grep {params.HAP} {input.regions} | tr '\n' ' ') | \
+        $(grep {params.HAP} {input.regions} | grep chr21 | tr '\n' ' ') | \
         bgzip -c \
         > {output}
         """
@@ -96,7 +107,7 @@ rule index_ref:
 rule run_dipcall:
     input:
         **{h: expand(rules.filter_asm.output, hap=h) for h in HAPLOTYPES},
-        ref=rules.download_ref.output,
+        ref=rules.unzip_ref.output,
         ref_idx=rules.index_ref.output,
         par=rules.download_PAR.output,
     output:

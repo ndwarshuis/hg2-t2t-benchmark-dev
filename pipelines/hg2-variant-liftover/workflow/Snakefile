@@ -1,9 +1,6 @@
 from pathlib import Path
 from os.path import dirname
 
-# query files from here: https://drive.google.com/drive/u/1/folders/1lqGkHjY7YL0Dvm-YWRpaIYDQILAo3P8K
-# pafs from here: https://drive.google.com/drive/u/1/folders/12_Y5Gvx50g6t9JVsRWdXWMp6L9tb3jJj
-
 src_dir = Path("resources")
 src_query_dir = src_dir / "query"
 src_bench_dir = src_dir / "bench"
@@ -473,13 +470,3 @@ rule all:
             hap=["mat", "pat"],
             label=["fp", "fn", "gt"],
         ),
-
-
-################################################################################
-# rule graveyard
-#
-# use rule download_query_vcf as download_paf with:
-#     output:
-#         src_dir / "paf" / "{hap}.bam.gz",
-#     params:
-#         url=paf_url,
