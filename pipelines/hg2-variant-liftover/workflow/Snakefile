@@ -119,20 +119,20 @@ rule list_asm_chrs:
 
 
 # for testing
-rule list_test_asm_chrs:
-    input:
-        rules.list_asm_chrs.output,
-    output:
-        res_hg2_dir / "chrs_filtered.txt",
-    shell:
-        "grep -E '(chr21|chr22)' {input} > {output}"
+# rule list_test_asm_chrs:
+#     input:
+#         rules.list_asm_chrs.output,
+#     output:
+#         res_hg2_dir / "chrs_filtered.txt",
+#     shell:
+#         "grep -E '(chr21|chr22)' {input} > {output}"
 
 
 rule filter_asm:
     input:
         fa=rules.download_hg2_asm.output,
-        # regions=rules.list_asm_chrs.output,
-        regions=rules.list_test_asm_chrs.output,
+        regions=rules.list_asm_chrs.output,
+        # regions=rules.list_test_asm_chrs.output,
     output:
         res_hg2_dir / "{hap}.fa.gz",
     conda:
@@ -156,8 +156,8 @@ rule unzip_ref:
     conda:
         "envs/dipcall.yml"
     shell:
-        "samtools faidx {input} chr21 chr22 > {output}"
-        # "gunzip -c {input} > {output}"
+        # "samtools faidx {input} chr21 chr22 > {output}"
+        "gunzip -c {input} > {output}"
 
 
 rule index_ref:
@@ -219,19 +219,19 @@ rule run_dipcall:
 
 
 # for testing
-rule filter_bench_vcf:
-    input:
-        rules.download_bench_vcf.output,
-    output:
-        res_bench_dir / "filtered.vcf.gz",
-    conda:
-        "envs/dipcall.yml"
-    shell:
-        """
-        gunzip -c {input} | \
-        grep -E '^(#|chr(21|22))' | \
-        bgzip -c > {output}
-        """
+# rule filter_bench_vcf:
+#     input:
+#         rules.download_bench_vcf.output,
+#     output:
+#         res_bench_dir / "filtered.vcf.gz",
+#     conda:
+#         "envs/dipcall.yml"
+#     shell:
+#         """
+#         gunzip -c {input} | \
+#         grep -E '^(#|chr(21|22))' | \
+#         bgzip -c > {output}
+#         """
 
 
 rule unzip_strats:
@@ -254,7 +254,8 @@ rule run_happy:
     input:
         refi=rules.index_ref.output,
         ref=rules.unzip_ref.output,
-        bench_vcf=rules.filter_bench_vcf.output,
+        # bench_vcf=rules.filter_bench_vcf.output,
+        bench_vcf=rules.download_bench_vcf.output,
         bench_bed=rules.download_bench_bed.output,
         query_vcf=rules.run_dipcall.output.vcf,
         query_bed=rules.run_dipcall.output.bed,
