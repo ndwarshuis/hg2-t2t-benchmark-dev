@@ -1,0 +1,9 @@
+schema: '2.0'
+stages:
+  snakemake:
+    cmd: snakemake --profile workflow/profiles/nisaba
+    outs:
+    - path: results/final
+      md5: 59e9b60d9811865e2f9d5119119cdcb0.dir
+      size: 35465176
+      nfiles: 12

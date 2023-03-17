@@ -4,7 +4,7 @@
 # big pipeline files
 resources
 results/*
-!results/dipcall
+!results/final
 
 # workflow files
 workflow
