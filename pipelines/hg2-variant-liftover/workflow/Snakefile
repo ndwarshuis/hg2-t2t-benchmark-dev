@@ -497,7 +497,7 @@ rule format_projected:
     input:
         rules.run_liftover.output.projected,
     output:
-        final_dir / "projected_{hap}_{label}.bed.gz",
+        final_dir / "projected_{hap}_{label}_final.bed.gz",
     conda:
         "envs/r.yml"
     script:
@@ -508,7 +508,7 @@ use rule format_projected as format_projectable with:
     input:
         rules.run_liftover.output.projectable,
     output:
-        final_dir / "projectable_{hap}_{label}.bed.gz",
+        final_dir / "projectable_{hap}_{label}_final.bed.gz",
 
 
 rule all:

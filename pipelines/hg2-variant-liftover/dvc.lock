@@ -4,6 +4,6 @@ stages:
     cmd: snakemake --profile workflow/profiles/nisaba
     outs:
     - path: results/final
-      md5: a3f513e340cfbdc4553236ba5ff2a7c3.dir
+      md5: 65d76dd9b96ea7a54aaa3046fdfde8c0.dir
       size: 611015
       nfiles: 12
