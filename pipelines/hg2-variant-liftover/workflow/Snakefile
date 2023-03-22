@@ -131,8 +131,8 @@ rule list_test_asm_chrs:
 rule filter_asm:
     input:
         fa=rules.download_hg2_asm.output,
-        # regions=rules.list_asm_chrs.output,
-        regions=rules.list_test_asm_chrs.output,
+        regions=rules.list_asm_chrs.output,
+        # regions=rules.list_test_asm_chrs.output,
     output:
         res_hg2_dir / "{hap}.fa.gz",
     conda:
@@ -148,6 +148,7 @@ rule filter_asm:
         """
 
 
+# flip this for testing
 rule unzip_ref:
     input:
         rules.download_ref.output,
@@ -156,8 +157,8 @@ rule unzip_ref:
     conda:
         "envs/dipcall.yml"
     shell:
-        "samtools faidx {input} chr21 chr22 > {output}"
-        # "gunzip -c {input} > {output}"
+        # "samtools faidx {input} chr21 chr22 > {output}"
+        "gunzip -c {input} > {output}"
 
 
 rule index_ref:
@@ -254,8 +255,8 @@ rule run_happy:
     input:
         refi=rules.index_ref.output,
         ref=rules.unzip_ref.output,
-        bench_vcf=rules.filter_bench_vcf.output,
-        # bench_vcf=rules.download_bench_vcf.output,
+        # bench_vcf=rules.filter_bench_vcf.output,
+        bench_vcf=rules.download_bench_vcf.output,
         bench_bed=rules.download_bench_bed.output,
         query_vcf=rules.run_dipcall.output.vcf,
         query_bed=rules.run_dipcall.output.bed,
@@ -287,7 +288,6 @@ rule run_happy:
         """
 
 
-
 rule remove_happy_SVs:
     input:
         rules.run_happy.output,
@@ -307,6 +307,7 @@ rule remove_happy_SVs:
         bgzip -c > \
         {output}
         """
+
 
 use rule remove_happy_SVs as remove_dipcall_SVs with:
     input:
@@ -475,8 +476,8 @@ rule run_liftover:
         bed=liftover_input,
         tooldir=rules.clone_liftover_scripts.output,
     output:
-        projectable=final_dir / "projectable_{hap}_{label}.bed",
-        projected=final_dir / "projected_{hap}_{label}.bed",
+        projectable=res_compbed_dir / "projectable_{hap}_{label}.bed",
+        projected=res_compbed_dir / "projected_{hap}_{label}.bed",
     threads: 8
     resources:
         mem_mb=32000,
@@ -492,10 +493,28 @@ rule run_liftover:
         """
 
 
+rule format_projected:
+    input:
+        rules.run_liftover.output.projected,
+    output:
+        final_dir / "projected_{hap}_{label}.bed.gz",
+    conda:
+        "envs/r.yml"
+    script:
+        "scripts/R/format.R"
+
+
+use rule format_projected as format_projectable with:
+    input:
+        rules.run_liftover.output.projectable,
+    output:
+        final_dir / "projectable_{hap}_{label}.bed.gz",
+
+
 rule all:
     input:
         expand(
-            rules.run_liftover.output,
+            rules.format_projected.output + rules.format_projectable.output,
             hap=["mat", "pat"],
             label=["fp", "fn", "gt"],
         ),
