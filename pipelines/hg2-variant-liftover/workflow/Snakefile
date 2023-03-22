@@ -119,20 +119,20 @@ rule list_asm_chrs:
 
 
 # for testing
-# rule list_test_asm_chrs:
-#     input:
-#         rules.list_asm_chrs.output,
-#     output:
-#         res_hg2_dir / "chrs_filtered.txt",
-#     shell:
-#         "grep -E '(chr21|chr22)' {input} > {output}"
+rule list_test_asm_chrs:
+    input:
+        rules.list_asm_chrs.output,
+    output:
+        res_hg2_dir / "chrs_filtered.txt",
+    shell:
+        "grep -E '(chr21|chr22)' {input} > {output}"
 
 
 rule filter_asm:
     input:
         fa=rules.download_hg2_asm.output,
-        regions=rules.list_asm_chrs.output,
-        # regions=rules.list_test_asm_chrs.output,
+        # regions=rules.list_asm_chrs.output,
+        regions=rules.list_test_asm_chrs.output,
     output:
         res_hg2_dir / "{hap}.fa.gz",
     conda:
@@ -156,8 +156,8 @@ rule unzip_ref:
     conda:
         "envs/dipcall.yml"
     shell:
-        # "samtools faidx {input} chr21 chr22 > {output}"
-        "gunzip -c {input} > {output}"
+        "samtools faidx {input} chr21 chr22 > {output}"
+        # "gunzip -c {input} > {output}"
 
 
 rule index_ref:
@@ -219,19 +219,19 @@ rule run_dipcall:
 
 
 # for testing
-# rule filter_bench_vcf:
-#     input:
-#         rules.download_bench_vcf.output,
-#     output:
-#         res_bench_dir / "filtered.vcf.gz",
-#     conda:
-#         "envs/dipcall.yml"
-#     shell:
-#         """
-#         gunzip -c {input} | \
-#         grep -E '^(#|chr(21|22))' | \
-#         bgzip -c > {output}
-#         """
+rule filter_bench_vcf:
+    input:
+        rules.download_bench_vcf.output,
+    output:
+        res_bench_dir / "filtered.vcf.gz",
+    conda:
+        "envs/dipcall.yml"
+    shell:
+        """
+        gunzip -c {input} | \
+        grep -E '^(#|chr(21|22))' | \
+        bgzip -c > {output}
+        """
 
 
 rule unzip_strats:
@@ -254,8 +254,8 @@ rule run_happy:
     input:
         refi=rules.index_ref.output,
         ref=rules.unzip_ref.output,
-        # bench_vcf=rules.filter_bench_vcf.output,
-        bench_vcf=rules.download_bench_vcf.output,
+        bench_vcf=rules.filter_bench_vcf.output,
+        # bench_vcf=rules.download_bench_vcf.output,
         bench_bed=rules.download_bench_bed.output,
         query_vcf=rules.run_dipcall.output.vcf,
         query_bed=rules.run_dipcall.output.bed,
@@ -287,11 +287,39 @@ rule run_happy:
         """
 
 
-rule index_dipcall_vcf:
+
+rule remove_happy_SVs:
+    input:
+        rules.run_happy.output,
+    output:
+        res_compbed_dir / "no_SV_happy.vcf.gz",
+    conda:
+        "envs/bcftools.yml"
+    shell:
+        """
+        gunzip -c {input} | \
+        awk 'function abs(v) {{return v < 0 ? -v : v}}
+             function sv(a) {{return abs(length(a)-length($4)) <= 50}}
+             {{ n = split($5, a, ",");
+                if (sv(a[1]) && (n == 1 || sv(a[2])))
+                {{ print $0 }}
+             }}' | \
+        bgzip -c > \
+        {output}
+        """
+
+use rule remove_happy_SVs as remove_dipcall_SVs with:
     input:
         rules.run_dipcall.output.vcf,
     output:
-        rules.run_dipcall.output.vcf + ".tbi",
+        res_compbed_dir / "no_SV_dipcall.vcf.gz",
+
+
+rule index_dipcall_vcf:
+    input:
+        rules.remove_dipcall_SVs.output,
+    output:
+        rules.remove_dipcall_SVs.output[0] + ".tbi",
     conda:
         "envs/dipcall.yml"
     shell:
@@ -300,18 +328,18 @@ rule index_dipcall_vcf:
 
 use rule index_dipcall_vcf as index_happy_vcf with:
     input:
-        rules.run_happy.output,
+        rules.remove_happy_SVs.output,
     output:
-        rules.run_happy.output[0] + ".tbi",
+        rules.remove_happy_SVs.output[0] + ".tbi",
 
 
 # happy sadly will strip the phasing information from the output vcf, so add
 # it back here
 rule annotate_happy_vcf:
     input:
-        dipcall=rules.run_dipcall.output.vcf,
+        dipcall=rules.remove_dipcall_SVs.output,
         dipcall_tbx=rules.index_dipcall_vcf.output,
-        happy=rules.run_happy.output,
+        happy=rules.remove_happy_SVs.output,
         happy_tbx=rules.index_happy_vcf.output,
     output:
         res_compbed_dir / "annotated.vcf.gz",
@@ -320,7 +348,7 @@ rule annotate_happy_vcf:
     shell:
         """
         bcftools merge {input.dipcall} {input.happy} | \
-        grep -v './\.:\.    ./\.:\.'  | \
+        grep -vP './\.:\.\t./\.:\.' | \
         bgzip -c \
          > {output}
         """
