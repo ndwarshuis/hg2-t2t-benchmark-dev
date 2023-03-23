@@ -13,7 +13,7 @@ int2chr <- function(i, suffix) {
   sprintf("chr%s_%s", c, suffix)
 }
 
-data_fmt <- c("REF", "ALT", "dissimilarity", "regions", "phase") %>%
+data_fmt <- c("REF", "ALT", "dissimilarity", "regions", "query_phase", "bench_phase") %>%
   sprintf("%s=%%s", .) %>%
   str_c(collapse = ":")
 
@@ -29,12 +29,13 @@ readr::read_tsv(path,
   separate_longer_delim(data, "~") %>%
   separate_wider_delim(data,
                        delim = ";",
-                       names = c("REF", "ALT", NA, "regions", "FORMAT", "SAMPLE", NA, NA)
+                       names = c("REF", "ALT", NA, "regions", "FORMAT", "SAMPLE", "TRUTH", NA)
                        ) %>%
   mutate(
     regions = str_replace(regions, "Regions=", ""),
-    phase = str_extract(SAMPLE, "(.*?):", group = 1),
-    data = sprintf(data_fmt, REF, ALT, dissimilarity, regions, phase)
+    query_phase = str_extract(SAMPLE, "(.*?):", group = 1),
+    bench_phase = str_extract(TRUTH, "(.*?):", group = 1),
+    data = sprintf(data_fmt, REF, ALT, dissimilarity, regions, query_phase, bench_phase)
   ) %>%
   filter(str_detect(regions, "notinsegdup")) %>%
   select(chrom, start, end, data) %>%
