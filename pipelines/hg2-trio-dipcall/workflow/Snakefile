@@ -20,23 +20,30 @@ def verkko_url(wildcards):
 
 
 def verkko_hap(parent):
-    if parent in ["hg3", "hg2_pat"]:
+    if parent in ["hg3", "hg2_pat", "hg2_pat_verkko"]:
         return "pat"
-    elif parent in ["hg4", "hg2_mat"]:
+    elif parent in ["hg4", "hg2_mat", "hg2_mat_verkko"]:
         return "mat"
     else:
         assert False, "Even Guido can type better than you (wrong parent)"
 
 
-def hifiasm_asm(parent):
-    if parent in ["hg2_pat", "hg2_mat"]:
-        return "hg2"
+def dipcall_parent_asm(hap, parent):
+    if parent in ["hg2_pat_verkko", "hg2_mat_verkko"]:
+        return expand(rules.download_verkko_asm.output, verkko_hap=hap)
+    elif parent in ["hg2_pat", "hg2_mat"]:
+        p = "hg2"
     elif parent == "hg3":
-        return "hg3"
+        p = "hg3"
     elif parent == "hg4":
-        return "hg4"
+        p = "hg4"
     else:
         assert False, "This sounds like LOLCODE (wrong parent)"
+    return expand(
+        rules.laboriously_obtain_hifiasm_asms.output,
+        hifiasm_hap=hap,
+        parent=p,
+    )
 
 
 rule download_verkko_asm:
@@ -83,11 +90,7 @@ rule run_dipcall:
                     ]
                 },
                 **{
-                    k: expand(
-                        rules.laboriously_obtain_hifiasm_asms.output,
-                        hifiasm_hap=h,
-                        parent=hifiasm_asm(w.parent),
-                    )
+                    k: dipcall_parent_asm(h, w.parent)
                     for k, h in [("h1", "pat"), ("h2", "mat")]
                 },
             }
@@ -165,5 +168,7 @@ rule all:
                 "hg4",
                 "hg2_pat",
                 "hg2_mat",
+                "hg2_pat_verkko",
+                "hg2_mat_verkko",
             ],
         ),
