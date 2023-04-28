@@ -511,10 +511,80 @@ use rule format_projected as format_projectable with:
         final_dir / "projectable_{hap}_{label}_final.bed.gz",
 
 
+def get_phase(wildcards):
+    run_map = {
+        ("mat", "fp", "falsehet"): ("0|1", ".\/."),
+        ("pat", "fp", "falsehet"): ("1|0", ".\/."),
+        ("pat", "gt", "collapse"): ("1|1", "0|1"),
+        ("mat", "gt", "collapse"): ("1|1", "1|0"),
+        ("pat", "gt", "collapse_noton"): ("1|1", "1|0"),
+        ("mat", "gt", "collapse_noton"): ("1|1", "0|1"),
+        ("pat", "gt", "collapse_unknownhap"): ("1|1", "0\/1"),
+        ("mat", "gt", "collapse_unknownhap"): ("1|1", "0\/1"),
+        ("mat", "gt", "falsehetorv4error_12"): ("1|2", "1\/1"),
+        ("pat", "gt", "falsehetorv4error_21"): ("2|1", "1\/1"),
+        ("mat", "gt", "falsehetorv4error_10"): ("1|0", "1\/1"),
+        ("pat", "gt", "falsehetorv4error_01"): ("0|1", "1\/1"),
+        ("pat", "fn", "collapse"): (".\/.", "1|0"),
+        ("mat", "fn", "collapse"): (".\/.", "0|1"),
+        ("pat", "fn", "collapse_noton"): (".\/.", "0|1"),
+        ("mat", "fn", "collapse_noton"): (".\/.", "1|0"),
+        ("mat", "fn", "collapse_unknownhap"): (".\/.", "0\/1"),
+        ("pat", "fn", "collapse_unknownhap"): (".\/.", "0\/1"),
+        ("mat", "fn", "error_unknownhap_21or12"): (".\/.", "(2\/1\|1\/2)"),
+        ("pat", "fn", "error_unknownhap_21or12"): (".\/.", "(2\/1\|1\/2)"),
+    }
+    return run_map[(wildcards.hap, wildcards.label, wildcards.filebase)]
+
+
+rule filter_projected:
+    input:
+        rules.format_projected.output,
+    output:
+        final_dir / "projected_filtered_{filebase}_{hap}_{label}.bed.gz",
+    params:
+        query_gt=lambda w: get_phase(w)[0],
+        bench_gt=lambda w: get_phase(w)[1],
+    shell:
+        """
+        gunzip -c {input} | \
+        sed -n '/{params.query_gt}:bench_phase={params.bench_gt}/p' | \
+        gzip -c > {output}
+        """
+
+
+all_runs = [
+    ("mat", "fp", "falsehet"),
+    ("pat", "fp", "falsehet"),
+    ("pat", "gt", "collapse"),
+    ("mat", "gt", "collapse"),
+    ("pat", "gt", "collapse_noton"),
+    ("mat", "gt", "collapse_noton"),
+    ("pat", "gt", "collapse_unknownhap"),
+    ("mat", "gt", "collapse_unknownhap"),
+    ("mat", "gt", "falsehetorv4error_12"),
+    ("pat", "gt", "falsehetorv4error_21"),
+    ("mat", "gt", "falsehetorv4error_10"),
+    ("pat", "gt", "falsehetorv4error_01"),
+    ("pat", "fn", "collapse"),
+    ("mat", "fn", "collapse"),
+    ("pat", "fn", "collapse_noton"),
+    ("mat", "fn", "collapse_noton"),
+    ("mat", "fn", "collapse_unknownhap"),
+    ("pat", "fn", "collapse_unknownhap"),
+    ("mat", "fn", "error_unknownhap_21or12"),
+    ("pat", "fn", "error_unknownhap_21or12"),
+]
+
+hap, label, filebase = map(list, zip(*all_runs))
+
+
 rule all:
     input:
         expand(
-            rules.format_projected.output + rules.format_projectable.output,
-            hap=["mat", "pat"],
-            label=["fp", "fn", "gt"],
+            rules.filter_projected.output + rules.format_projectable.output,
+            zip,
+            filebase=filebase,
+            label=label,
+            hap=hap,
         ),
