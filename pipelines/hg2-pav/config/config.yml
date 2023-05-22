@@ -1,0 +1,3 @@
+pav:
+  reference: "resources/ref/hg38.ra.gz"
+  assembly_table: "config/asm.tsv"

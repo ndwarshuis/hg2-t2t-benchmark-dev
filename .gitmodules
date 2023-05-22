@@ -1,0 +1,3 @@
+[submodule "pipelines/hg2-pav/workflow/modules/pav"]
+	path = pipelines/hg2-pav/workflow/modules/pav
+	url = https://github.com/EichlerLab/pav.git

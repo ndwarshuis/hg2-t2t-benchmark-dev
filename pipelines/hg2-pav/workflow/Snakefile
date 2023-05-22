@@ -1,0 +1,32 @@
+from pathlib import Path
+import re
+
+
+configfile: "config/config.yml"
+
+
+rule download_ref:
+    output:
+        config["pav"]["reference"]
+    params:
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
+    shell:
+        "curl -Ss -q -L {params.url} > {output}"
+
+
+module pav_base:
+    snakefile:
+        "modules/pav/Snakefile"
+    config:
+        config["pav"]
+
+
+use rule * from pav_base as pav_*
+
+use rule pav_vcf_write_vcf as hacked_vcf_write_vcf with:
+    output:
+        vcf='results/final/pav_{asm_name}.vcf.gz'
+
+rule all:
+    input:
+        expand("results/final/{base}", base=rules.pav_pav_all.input.bed),

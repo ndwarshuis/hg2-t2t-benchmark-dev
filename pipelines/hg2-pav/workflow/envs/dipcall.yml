@@ -1,0 +1,6 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - dipcall=0.3
+  - minimap2=2.24
