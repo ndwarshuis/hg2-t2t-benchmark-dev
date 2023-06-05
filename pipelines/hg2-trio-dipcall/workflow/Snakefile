@@ -97,6 +97,8 @@ rule run_dipcall:
         ),
     output:
         vcf=res_dip_dir / "hg2.dip.vcf.gz",
+        bam1=res_dip_dir / "hg2.hap1.bam",
+        bam2=res_dip_dir / "hg2.hap2.bam",
         pair=res_dip_dir / "hg2.pair.vcf.gz",
         make=res_dip_dir / "hg2.dip.mak",
     conda:
@@ -159,10 +161,27 @@ rule index_output_vcfs:
         """
 
 
+rule index_output_bams:
+    input:
+        bam1=rules.run_dipcall.output.bam1,
+        bam2=rules.run_dipcall.output.bam2,
+    output:
+        bai1=rules.run_dipcall.output.bam1 + ".bai",
+        bai2=rules.run_dipcall.output.bam2 + ".bai",
+    conda:
+        "envs/dipcall.yml"
+    shell:
+        """
+        samtools index {input.bam1}
+        samtools index {input.bam2}
+        """
+
+
 rule all:
     input:
         expand(
-            rules.index_output_vcfs.output,
+            rules.index_output_vcfs.output +
+            rules.index_output_bams.output,
             parent=[
                 "hg3",
                 "hg4",
