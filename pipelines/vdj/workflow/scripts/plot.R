@@ -14,7 +14,7 @@ df_CHM13 %>%
   ggplot(aes(pos_CHM13, pos_real, color = correct_map, shape = major)) +
   geom_point() +
   facet_wrap(c("locus", "hap"), scales = "free")
-ggsave(snakemake@output$unmapped)
+ggsave(snakemake@output$unmapped, width = 10, height = 7)
 
 ## df_CHM13 %>%
 ##   filter(locus %in% c("TRA", "TRD")) %>%
@@ -40,5 +40,5 @@ df_mapped %>%
   ggplot(aes(mapped_pos, pos_CHM13, color = major)) +
   geom_point() +
   facet_wrap(c("locus", "hap"), scales = "free")
-ggsave(snakemake@output$mapped)
+ggsave(snakemake@output$mapped, width = 10, height = 7)
  

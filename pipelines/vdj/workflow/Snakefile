@@ -97,18 +97,20 @@ rule lift_vdj_genes:
     output:
         mapped="results/liftoff/{ref}/mapped_{hap}.gff",
         unmapped="results/liftoff/{ref}/unmapped_{hap}.txt",
-    threads: 4
+        intermediate=directory("results/liftoff/{ref}/intermediate_{hap}"),
+    log:
+        "results/liftoff/{ref}/lift_{hap}.log",
     conda:
         "envs/master.yml"
     shell:
         """
         liftoff -f static/features.txt \
-        -p {threads} \
         -chroms {input.chroms} \
         -g {input.genes} \
         -o {output.mapped} \
         -u {output.unmapped} \
-        {input.asm_ref} {input.chm13_ref}
+        -dir {output.intermediate} \
+        {input.asm_ref} {input.chm13_ref} > {log} 2>&1
         """
 
 
@@ -133,20 +135,20 @@ rule process_lifted_genes:
     conda:
         "envs/master.yml"
     script:
-        "workflow/scripts/process.R"
+        "scripts/process.R"
 
 
 rule make_wizzy_plots:
     input:
         loci=rules.process_lifted_genes.output.loci,
-        genes=rules.process_lifted_genes.output.loci,
+        genes=rules.process_lifted_genes.output.genes,
     output:
         unmapped="results/plots/{ref}/unmapped.pdf",
         mapped="results/plots/{ref}/mapped.pdf",
     conda:
         "envs/master.yml"
     script:
-        "workflow/scripts/plot.R"
+        "scripts/plot.R"
 
 
 rule all:

@@ -32,40 +32,40 @@ read_mapped_data <- function(order_df, mapped_path, unmapped_path, hap) {
 
   bind_rows(unmapped, gff) %>%
     mutate(locus = str_sub(gene, 1, 3)) %>%
+    mutate(locus = if_else(locus == "TRD", "TRA", locus)) %>%
     mutate(correct_map = case_when(locus == "TRA" & chrom == "chr14" ~ TRUE,
-                                   locus == "TRD" & chrom == "chr14" ~ TRUE,
                                    locus == "TRB" & chrom == "chr7" ~ TRUE,
                                    locus == "TRG" & chrom == "chr7" ~ TRUE,
                                    locus == "IGK" & chrom == "chr2" ~ TRUE,
                                    locus == "IGL" & chrom == "chr22" ~ TRUE,
-                                   locus == "IGH" & chrom == "chr14" ~ TRUE,
+                                   locus == "IGH" & chrom == "chr14" & start > 90000000 ~ TRUE,
                                    TRUE ~ FALSE),
-           is_global = gene %in% c("IGK", "IGH", "IGL", "TRA", "TRB", "TRG", "TRD")) %>%
+           is_global = gene %in% c("IGK", "IGH", "IGL", "TRA", "TRB", "TRG")) %>%
     group_by(locus, correct_map, is_global) %>%
     arrange(chrom, start) %>%
     mutate(mapped_pos = row_number()) %>%
     ungroup() %>%
-    select(-chrom, -locus) %>%
+    select(-locus) %>%
     mutate(hap = hap)
 }
 
 order_df <- read_tsv(
-  snakemake@input$order
+  snakemake@input$order,
   col_types = "ci",
   col_names = c("gene", "pos")
 )
 
 pat_query <- read_mapped_data(
   order_df,
-  snakemake@input$mapped_pat
-  snakemake@input$unmapped_pat
+  snakemake@input$mapped_pat,
+  snakemake@input$unmapped_pat,
   "pat"
 )
 
 mat_query <- read_mapped_data(
   order_df,
-  snakemake@input$mapped_mat
-  snakemake@input$unmapped_mat
+  snakemake@input$mapped_mat,
+  snakemake@input$unmapped_mat,
   "mat"
 )
 
@@ -83,6 +83,7 @@ df <- query %>%
   select(-is_global) %>%
   full_join(order_df, by = "gene") %>%
   mutate(locus = str_sub(gene, 1, 3),
+	 locus = if_else(locus == "TRD", "TRA", locus),
          major = str_sub(gene, 4, 4),
          minor = str_sub(gene, 5)) %>%
   mutate(is_constant = !major %in% c("V", "D", "J"),
@@ -94,6 +95,5 @@ df <- query %>%
   mutate(pos_real = row_number()) %>%
   ungroup()
 
-readr::write_tsv(snakemake@output$loci, query_global)
-readr::write_tsv(snakemake@output$genes, df)
-readr::write_tsv(snakemake@output$order, order_df)
+readr::write_tsv(query_global, snakemake@output$loci)
+readr::write_tsv(df, snakemake@output$genes)
