@@ -1,0 +1,154 @@
+conf = {
+    "hg2_07": {
+        "asm_url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/scratch/HG002/assemblies/drafts/assembly.v0.7.fasta",
+        "chrom_maps": {
+            h: {
+                **{f"chr{i}": f"chr{i}_{H}" for i in [*range(1, 23)]},
+                **{"chrX": "chrX_MATERNAL", "chrY": "chrY_PATERNAL"},
+            }
+            for h, H in [("pat", "PATERNAL"), ("mat", "MATERNAL")]
+        },
+    },
+}
+
+
+rule build_chroms_mapper:
+    output:
+        "resources/{ref}/chrom_mapper_{hap}.txt",
+    params:
+        stream=lambda w: "\n".join(
+            f"{k},{v}" for k, v in conf[w.ref]["chrom_maps"][w.hap].items()
+        ),
+    shell:
+        """
+        echo -e '{params.stream}' > {output}
+        """
+
+
+rule download_asm:
+    output:
+        "resources/refs/{ref}.fa",
+    params:
+        url=lambda w: conf[w.ref]["asm_url"],
+    shell:
+        """
+        curl -qSs --fail -L {params.url} > {output}
+        """
+
+
+rule download_chm13:
+    output:
+        "resources/chm13.fa",
+    params:
+        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
+    shell:
+        """
+        curl -qSs --fail -L {params.url} | gunzip -c > {output}
+        """
+
+
+use rule download_chm13 as download_chm_gff with:
+    output:
+        "resources/chm13.gff",
+    params:
+        url="https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz",
+
+
+rule filter_asm_haps:
+    input:
+        rules.download_asm.output,
+    output:
+        "results/refs/{ref}_{hap}.fa",
+    params:
+        chroms=lambda w: " ".join(list(conf[w.ref]["chrom_maps"][w.hap].values())),
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools faidx {input} {params.chroms} > {output}
+        """
+
+
+rule filter_vdj_genes:
+    input:
+        rules.download_chm_gff.output,
+    output:
+        "results/chm13_immuno.gff",
+    shell:
+        """
+        grep -E 'ID=gene-(IG(H|K|L|D)|TR(A|B|G|D))' {input} | \
+        sed 's/^NC_060946.1/chr22/' | \
+        sed 's/^NC_060938.1/chr14/' | \
+        sed 's/^NC_060931.1/chr7/' | \
+        sed 's/^NC_060926.1/chr2/' | \
+        grep '^chr' | \
+        grep -E 'immunoglobulin|T cell receptor' | \
+        grep -vE 'RNA|polypeptide|deleting' > \
+        {output} 
+        """
+
+
+rule lift_vdj_genes:
+    input:
+        chroms=rules.build_chroms_mapper.output,
+        asm_ref=rules.filter_asm_haps.output,
+        chm13_ref=rules.download_chm13.output,
+        genes=rules.filter_vdj_genes.output,
+    output:
+        mapped="results/liftoff/{ref}/mapped_{hap}.gff",
+        unmapped="results/liftoff/{ref}/unmapped_{hap}.txt",
+    threads: 4
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        liftoff -f static/features.txt \
+        -p {threads} \
+        -chroms {input.chroms} \
+        -g {input.genes} \
+        -o {output.mapped} \
+        -u {output.unmapped} \
+        {input.asm_ref} {input.chm13_ref}
+        """
+
+
+rule process_lifted_genes:
+    input:
+        **{
+            f"mapped_{h}": expand(
+                rules.lift_vdj_genes.output.mapped, allow_missing=True, hap=h
+            )
+            for h in ["pat", "mat"]
+        },
+        **{
+            f"unmapped_{h}": expand(
+                rules.lift_vdj_genes.output.unmapped, allow_missing=True, hap=h
+            )
+            for h in ["pat", "mat"]
+        },
+        order="static/gene_order.tsv",
+    output:
+        loci="results/processed/{ref}_locus.tsv",
+        genes="results/processed/{ref}_genes.tsv",
+    conda:
+        "envs/master.yml"
+    script:
+        "workflow/scripts/process.R"
+
+
+rule make_wizzy_plots:
+    input:
+        loci=rules.process_lifted_genes.output.loci,
+        genes=rules.process_lifted_genes.output.loci,
+    output:
+        unmapped="results/plots/{ref}/unmapped.pdf",
+        mapped="results/plots/{ref}/mapped.pdf",
+    conda:
+        "envs/master.yml"
+    script:
+        "workflow/scripts/plot.R"
+
+
+rule all:
+    input:
+        expand(rules.make_wizzy_plots.output, ref=list(conf)),

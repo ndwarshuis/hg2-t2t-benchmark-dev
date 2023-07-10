@@ -1,0 +1,7 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - liftoff=1.6.2
+  - r-tidyverse
+  - samtools
