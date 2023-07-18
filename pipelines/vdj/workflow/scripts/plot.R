@@ -35,9 +35,14 @@ df_mapped <- df_CHM13 %>%
   left_join(df_loci, by = c("locus" = "gene", "hap" = "hap")) %>%
   mutate(global_contains = global_start <= start & end <= global_end)
 
+df_landmarks <- df_CHM13 %>%
+  filter(locus == "IGK", major == "V", minor == "2-40") %>%
+  mutate(landmark = "hsat2")
+
 df_mapped %>%
   ## filter(!is.na(global_contains)) %>%
   ggplot(aes(mapped_pos, pos_CHM13, color = major)) +
+  geom_hline(data = df_landmarks, aes(yintercept = pos_CHM13)) +
   geom_point() +
   facet_wrap(c("locus", "hap"), scales = "free")
 ggsave(snakemake@output$mapped, width = 10, height = 7)

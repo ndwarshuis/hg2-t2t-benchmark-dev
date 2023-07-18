@@ -33,7 +33,8 @@ read_mapped_data <- function(order_df, mapped_path, unmapped_path, hap) {
   bind_rows(unmapped, gff) %>%
     mutate(locus = str_sub(gene, 1, 3)) %>%
     mutate(locus = if_else(locus == "TRD", "TRA", locus)) %>%
-    mutate(correct_map = case_when(locus == "TRA" & chrom == "chr14" ~ TRUE,
+    mutate(correct_map = case_when(gene == "IGKDEL" & chrom == "chr2" ~ TRUE,
+				   locus == "TRA" & chrom == "chr14" ~ TRUE,
                                    locus == "TRB" & chrom == "chr7" ~ TRUE,
                                    locus == "TRG" & chrom == "chr7" ~ TRUE,
                                    locus == "IGK" & chrom == "chr2" ~ TRUE,
@@ -84,9 +85,9 @@ df <- query %>%
   full_join(order_df, by = "gene") %>%
   mutate(locus = str_sub(gene, 1, 3),
 	 locus = if_else(locus == "TRD", "TRA", locus),
-         major = str_sub(gene, 4, 4),
-         minor = str_sub(gene, 5)) %>%
-  mutate(is_constant = !major %in% c("V", "D", "J"),
+         major = if_else(gene == "IGKDEL", "DEL", str_sub(gene, 4, 4)),
+         minor = if_else(gene == "IGKDEL", "DEL", str_sub(gene, 5))) %>%
+  mutate(is_constant = !major %in% c("V", "D", "J", "DEL"),
          minor = if_else(is_constant, paste0(major, minor), minor),
          major = if_else(is_constant, "const", major)) %>%
   select(-gene, -is_constant) %>%

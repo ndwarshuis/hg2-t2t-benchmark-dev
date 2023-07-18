@@ -9,70 +9,14 @@ conf = {
             for h, H in [("pat", "PATERNAL"), ("mat", "MATERNAL")]
         },
     },
-    "hg2_08": {
-        "asm_url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v0.8.fasta",
+    "hg2_09": {
+        "asm_url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v0.9.fasta",
         "chrom_maps": {
-            "pat": {
-                "chr10": "chr10_PAT",
-                "chr11": "chr11_PAT",
-                "chr12": "chr12_PAT",
-                "chr13": "chr13_PAT",
-                "chr14": "chr14_PAT",
-                "chr15": "chr15_PAT",
-                "chr16": "chr16_PAT_1",
-                "chr16": "chr16_PAT_2",
-                "chr16": "chr16_PAT_3",
-                "chr17": "chr17_PAT_1",
-                "chr17": "chr17_PAT_2",
-                "chr18": "chr18_PAT",
-                "chr19": "chr19_PAT",
-                "chr1": "chr1_PAT",
-                "chr20": "chr20_PAT",
-                "chr21": "chr21_PAT_1",
-                "chr21": "chr21_PAT_2",
-                "chr22": "chr22_PAT",
-                "chr2": "chr2_PAT",
-                "chr3": "chr3_PAT",
-                "chr4": "chr4_PAT_1",
-                "chr4": "chr4_PAT_2",
-                "chr5": "chr5_PAT",
-                "chr6": "chr6_PAT",
-                "chr7": "chr7_PAT_1",
-                "chr7": "chr7_PAT_2",
-                "chr8": "chr8_PAT",
-                "chr9": "chr9_PAT",
-                "chrY": "chrY_PAT",
-            },
-            "mat": {
-                "chr10": "chr10_MAT_1",
-                "chr10": "chr10_MAT_2",
-                "chr11": "chr11_MAT",
-                "chr12": "chr12_MAT",
-                "chr13": "chr13_MAT",
-                "chr14": "chr14_MAT",
-                "chr15": "chr15_MAT",
-                "chr16": "chr16_MAT_1",
-                "chr16": "chr16_MAT_2",
-                "chr17": "chr17_MAT",
-                "chr18": "chr18_MAT",
-                "chr19": "chr19_MAT",
-                "chr1": "chr1_MAT",
-                "chr20": "chr20_MAT",
-                "chr21": "chr21_MAT_1",
-                "chr21": "chr21_MAT_2",
-                "chr22": "chr22_MAT",
-                "chr2": "chr2_MAT",
-                "chr3": "chr3_MAT",
-                "chr4": "chr4_MAT",
-                "chr5": "chr5_MAT",
-                "chr6": "chr6_MAT",
-                "chr7": "chr7_MAT",
-                "chr8": "chr8_MAT",
-                "chr9": "chr9_MAT_1",
-                "chr9": "chr9_MAT_2",
-                "chrX": "chrX_MAT_1",
-                "chrX": "chrX_MAT_2",
-            },
+            h: {
+                **{f"chr{i}": f"chr{i}_{H}" for i in [*range(1, 23)]},
+                **{"chrX": "chrX_MATERNAL", "chrY": "chrY_PATERNAL"},
+            }
+            for h, H in [("pat", "PATERNAL"), ("mat", "MATERNAL")]
         },
     },
 }
@@ -149,7 +93,7 @@ rule filter_vdj_genes:
         sed 's/^NC_060926.1/chr2/' | \
         grep '^chr' | \
         grep -E 'immunoglobulin|T cell receptor' | \
-        grep -vE 'RNA|polypeptide|deleting' > \
+        grep -vE 'RNA|polypeptide' > \
         {output} 
         """
 
