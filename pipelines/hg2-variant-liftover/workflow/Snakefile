@@ -47,7 +47,7 @@ rule download_hg2_asm:
     output:
         src_dir / "asm" / "hg2.fa.gz",
     params:
-        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/scratch/HG002/assemblies/drafts/assembly.v0.7.fasta",
+        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v0.9.fasta",
     conda:
         "envs/dipcall.yml"
     shell:
