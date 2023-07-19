@@ -1,3 +1,5 @@
+from pathlib import Path
+
 conf = {
     "hg2_07": {
         "asm_url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/scratch/HG002/assemblies/drafts/assembly.v0.7.fasta",
@@ -20,6 +22,50 @@ conf = {
         },
     },
 }
+
+GAIRR_DIR = Path("resources/tools/gAIRR")
+GENE_PATH = GAIRR_DIR / "example/material/{gene}_alleles_parsed.fasta"
+GENES = [
+    "TCRV",
+    "TCRJ",
+    "BCRV",
+    "BCRJ",
+    "TCRD_plusHep",
+    "BCRD_plusHep",
+]
+
+
+wildcard_constraints:
+    gene=f"({'|'.join(GENES)})",
+
+
+# rule clone_gAIRR:
+#     output:
+#         directory(GAIRR_DIR),
+#     shell:
+#         """
+#         git clone https://github.com/maojanlin/gAIRRsuite.git {output} && \
+#         cd {output} && \
+#         git checkout 72df9130ea87d6216b2ca76856ea6b8f8c81a29f
+#         """
+
+
+rule download_allele:
+    output:
+        "resources/alleles/{gene}.fa",
+    shell:
+        """
+        curl -sSqL --fail \
+        https://raw.githubusercontent.com/maojanlin/gAIRRsuite/72df9130ea87d6216b2ca76856ea6b8f8c81a29f/example/material/{wildcards.gene}_alleles_parsed.fasta \
+        > {output}
+        """
+
+
+# rule gAIRR_genes:
+#     input:
+#         GAIRR_DIR,
+#     output:
+#         expand(GENE_PATH, gene=GENES),
 
 
 rule build_chroms_mapper:
@@ -77,6 +123,121 @@ rule filter_asm_haps:
         """
         samtools faidx {input} {params.chroms} > {output}
         """
+
+
+rule bwa_index_haps:
+    input:
+        rules.filter_asm_haps.output,
+    output:
+        rules.filter_asm_haps.output[0] + ".bwt",
+    conda:
+        "envs/gairr.yml"
+    shell:
+        """
+        bwa index -b 500000000 {input}
+        """
+
+
+GENE_ALIGN_PATH = Path("results/vdj_mapping/{ref}")
+
+
+rule align_vdj_haps:
+    input:
+        # dummy, not used
+        _index=rules.bwa_index_haps.output,
+        asm=rules.filter_asm_haps.output,
+        gene=rules.download_allele.output,
+    output:
+        GENE_ALIGN_PATH / "{gene}_{hap}.sam",
+    params:
+        flags=lambda w: "-a -T 10" if "plusHep" in w.gene else "-a",
+    conda:
+        "envs/gairr.yml"
+    threads: 16
+    shell:
+        """
+        bwa mem -t {threads} {params.flags} {input.asm} {input.gene} > {output}
+        """
+
+
+rule alignments_to_bed:
+    input:
+        rules.align_vdj_haps.output,
+    output:
+        GENE_ALIGN_PATH / "{gene}_{hap}.bed",
+    conda:
+        "envs/gairr.yml"
+    shell:
+        """
+        cat {input} | sam2bed > {output}
+        """
+
+
+rule sort_alignments:
+    input:
+        rules.align_vdj_haps.output,
+    output:
+        GENE_ALIGN_PATH / "{gene}_{hap}.bam",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools sort {input} > {output}
+        """
+
+
+rule merge_gene_alignments:
+    input:
+        expand(rules.sort_alignments.output, allow_missing=True, gene=GENES),
+    output:
+        GENE_ALIGN_PATH / "all_genes_{hap}.bam",
+    conda:
+        "envs/gairr.yml"
+    shell:
+        """
+        samtools merge {input} > {output}
+        """
+
+
+rule index_gene_alignments:
+    input:
+        rules.merge_gene_alignments.output,
+    output:
+        rules.merge_gene_alignments.output[0] + ".bai",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools index {input}
+        """
+
+
+rule merge_gene_beds:
+    input:
+        expand(rules.alignments_to_bed.output, allow_missing=True, gene=GENES),
+    output:
+        GENE_ALIGN_PATH / "all_genes_{hap}.bed",
+    conda:
+        "envs/gairr.yml"
+    shell:
+        """
+        cat {input} | \
+        sort -k1,1 -k2,2n -k3,3n | \
+        cut -f1,2,3,4,5,14,16 | \
+        mergeBed -i stdin -c 4,5,7 -o collapse,collapse,collapse \
+        > {output}
+        """
+
+
+rule process_gene_beds:
+    input:
+        rules.merge_gene_beds.output,
+    output:
+        GENE_ALIGN_PATH / "final_genes_{hap}.bed",
+    conda:
+        "envs/master.yml"
+    script:
+        "scripts/process_genes.R"
 
 
 rule filter_vdj_genes:
@@ -145,7 +306,7 @@ rule process_lifted_genes:
     conda:
         "envs/master.yml"
     script:
-        "scripts/process.R"
+        "scripts/process_liftover.R"
 
 
 rule make_wizzy_plots:
@@ -164,3 +325,8 @@ rule make_wizzy_plots:
 rule all:
     input:
         expand(rules.make_wizzy_plots.output, ref=list(conf)),
+        expand(
+            rules.process_gene_beds.output,
+            ref=list(conf),
+            hap=["mat", "pat"],
+        ),
