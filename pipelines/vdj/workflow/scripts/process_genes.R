@@ -2,7 +2,8 @@ library(tidyverse)
 
 df <- readr::read_tsv(
   snakemake@input[[1]],
-  col_names = c("chrom", "start", "end", "gene", "mapq", "score")
+  col_names = c("chrom", "start", "end", "gene", "mapq", "score"),
+  col_types = "ciiccc"
 )
 
 df_expanded <- df %>%
@@ -54,17 +55,17 @@ df_max <- df_allele %>%
          scoremax_gene = max(scorefrac)) %>%
   ungroup()
 
-df_max %>%
-  filter(scoremax_location < 0.2)
+## df_max %>%
+##   filter(scoremax_location < 0.2)
 
-df_max %>%
-  filter(mapqmax_location < 5)
+## df_max %>%
+##   filter(mapqmax_location < 5)
 
-df_max %>%
-  filter(scoremax_gene < 0.2)
+## df_max %>%
+##   filter(scoremax_gene < 0.2)
 
-df_max %>%
-  filter(mapqmax_gene < 5)
+## df_max %>%
+##   filter(mapqmax_gene < 5)
 
 # find genes that map to only one location, which in turn only has one gene
 df_counted <- df_max %>%

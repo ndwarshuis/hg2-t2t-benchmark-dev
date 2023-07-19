@@ -1,12 +1,31 @@
 library(tidyverse)
 
-df_loci <- readr::read_tsv(snakemake@input$loci)
-df_genes <- readr::read_tsv(snakemake@input$genes)
+df_loci <- readr::read_tsv(
+  snakemake@input$loci,
+  col_types = cols(
+    gene = "c",
+    global_start = "i",
+    global_end = "i",
+    hap = "c",
+  )
+)
+
+df_genes <- readr::read_tsv(
+  snakemake@input$genes,
+  col_types = cols(
+    pos = "i",
+    mapped_pos = "i",
+    correct_map = "l",
+    hap = "c",
+    locus = "c"
+  )
+)
 
 df_CHM13 <- df_genes %>%
   filter(!is.na(pos)) %>%
   filter(!is.na(correct_map)) %>%
   group_by(locus, hap) %>%
+  arrange(hap, locus, pos) %>%
   mutate(pos_CHM13 = row_number()) %>%
   ungroup()
 

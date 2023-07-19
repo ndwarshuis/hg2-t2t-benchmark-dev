@@ -7,7 +7,7 @@ split_attrs <- function(s) {
   tibble(key = unlist(res[[1]]), value = unlist(res[[2]]))
 }
 
-read_mapped_data <- function(order_df, mapped_path, unmapped_path, hap) {
+read_mapped_data <- function(mapped_path, unmapped_path, hap) {
   gff <- read_tsv(
     mapped_path,
     comment = "#",
@@ -50,21 +50,13 @@ read_mapped_data <- function(order_df, mapped_path, unmapped_path, hap) {
     mutate(hap = hap)
 }
 
-order_df <- read_tsv(
-  snakemake@input$order,
-  col_types = "ci",
-  col_names = c("gene", "pos")
-)
-
 pat_query <- read_mapped_data(
-  order_df,
   snakemake@input$mapped_pat,
   snakemake@input$unmapped_pat,
   "pat"
 )
 
 mat_query <- read_mapped_data(
-  order_df,
   snakemake@input$mapped_mat,
   snakemake@input$unmapped_mat,
   "mat"
@@ -79,14 +71,19 @@ query_global <- query %>%
   rename(global_start = start,
          global_end = end)
 
+order_df <- read_tsv(
+  snakemake@input$order,
+  col_types = "ci"
+)
+
 df <- query %>%
   filter(!is_global) %>%
   select(-is_global) %>%
   full_join(order_df, by = "gene") %>%
   mutate(locus = str_sub(gene, 1, 3),
 	 locus = if_else(locus == "TRD", "TRA", locus),
-         major = if_else(gene == "IGKDEL", "DEL", str_sub(gene, 4, 4)),
-         minor = if_else(gene == "IGKDEL", "DEL", str_sub(gene, 5))) %>%
+     major = if_else(gene == "IGKDEL", "DEL", str_sub(gene, 4, 4)),
+     minor = if_else(gene == "IGKDEL", "DEL", str_sub(gene, 5))) %>%
   mutate(is_constant = !major %in% c("V", "D", "J", "DEL"),
          minor = if_else(is_constant, paste0(major, minor), minor),
          major = if_else(is_constant, "const", major)) %>%

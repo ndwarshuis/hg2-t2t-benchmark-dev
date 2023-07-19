@@ -39,17 +39,6 @@ wildcard_constraints:
     gene=f"({'|'.join(GENES)})",
 
 
-# rule clone_gAIRR:
-#     output:
-#         directory(GAIRR_DIR),
-#     shell:
-#         """
-#         git clone https://github.com/maojanlin/gAIRRsuite.git {output} && \
-#         cd {output} && \
-#         git checkout 72df9130ea87d6216b2ca76856ea6b8f8c81a29f
-#         """
-
-
 rule download_allele:
     output:
         "resources/alleles/{gene}.fa",
@@ -59,13 +48,6 @@ rule download_allele:
         https://raw.githubusercontent.com/maojanlin/gAIRRsuite/72df9130ea87d6216b2ca76856ea6b8f8c81a29f/example/material/{wildcards.gene}_alleles_parsed.fasta \
         > {output}
         """
-
-
-# rule gAIRR_genes:
-#     input:
-#         GAIRR_DIR,
-#     output:
-#         expand(GENE_PATH, gene=GENES),
 
 
 rule build_chroms_mapper:
@@ -148,7 +130,7 @@ rule align_vdj_haps:
         asm=rules.filter_asm_haps.output,
         gene=rules.download_allele.output,
     output:
-        GENE_ALIGN_PATH / "{gene}_{hap}.sam",
+        GENE_ALIGN_PATH / "intermediates" / "{gene}_{hap}.sam",
     params:
         flags=lambda w: "-a -T 10" if "plusHep" in w.gene else "-a",
     conda:
@@ -164,7 +146,7 @@ rule alignments_to_bed:
     input:
         rules.align_vdj_haps.output,
     output:
-        GENE_ALIGN_PATH / "{gene}_{hap}.bed",
+        GENE_ALIGN_PATH / "intermediates" / "{gene}_{hap}.bed",
     conda:
         "envs/gairr.yml"
     shell:
@@ -177,7 +159,7 @@ rule sort_alignments:
     input:
         rules.align_vdj_haps.output,
     output:
-        GENE_ALIGN_PATH / "{gene}_{hap}.bam",
+        GENE_ALIGN_PATH / "intermediates" / "{gene}_{hap}.bam",
     conda:
         "envs/master.yml"
     shell:
@@ -195,7 +177,7 @@ rule merge_gene_alignments:
         "envs/gairr.yml"
     shell:
         """
-        samtools merge {input} > {output}
+        samtools merge -o {output} {input}
         """
 
 
@@ -216,7 +198,7 @@ rule merge_gene_beds:
     input:
         expand(rules.alignments_to_bed.output, allow_missing=True, gene=GENES),
     output:
-        GENE_ALIGN_PATH / "all_genes_{hap}.bed",
+        GENE_ALIGN_PATH / "intermediates" / "all_genes_{hap}.bed",
     conda:
         "envs/gairr.yml"
     shell:
@@ -238,6 +220,25 @@ rule process_gene_beds:
         "envs/master.yml"
     script:
         "scripts/process_genes.R"
+
+
+rule merge_rank_gene_beds:
+    input:
+        **{
+            h: expand(
+                rules.process_gene_beds.output,
+                allow_missing=True,
+                hap=h,
+            )
+            for h in ["pat", "mat"]
+        },
+        order="static/gene_order.tsv",
+    output:
+        GENE_ALIGN_PATH / "allhaps_genes.bed",
+    conda:
+        "envs/master.yml"
+    script:
+        "scripts/rank_mapped_genes.R"
 
 
 rule filter_vdj_genes:
@@ -322,11 +323,23 @@ rule make_wizzy_plots:
         "scripts/plot.R"
 
 
+use rule make_wizzy_plots as make_wizzy_gene_plots with:
+    input:
+        loci=rules.process_lifted_genes.output.loci,
+        genes=rules.merge_rank_gene_beds.output,
+    output:
+        unmapped=GENE_ALIGN_PATH / "unmapped.pdf",
+        mapped=GENE_ALIGN_PATH / "mapped.pdf",
+
+
 rule all:
     input:
-        expand(rules.make_wizzy_plots.output, ref=list(conf)),
         expand(
-            rules.process_gene_beds.output,
+            rules.make_wizzy_plots.output + rules.make_wizzy_gene_plots.output,
+            ref=list(conf),
+        ),
+        expand(
+            rules.index_gene_alignments.output + rules.process_gene_beds.output,
             ref=list(conf),
             hap=["mat", "pat"],
         ),
