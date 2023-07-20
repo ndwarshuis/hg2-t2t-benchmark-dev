@@ -11,8 +11,20 @@ cluster:
     --time={resources.time}
 default-resources:
   - partition=batch
-  - mem_mb=1000
+  - mem_mb=8000
   - time="8:0:0"
+set-resources:
+        #  - pav_data_ref_contig_table:mem_mb=8000
+        #  - pav_data_align_ref_anno_n_gap:mem_mb=8000
+        #  - pav_align_get_tig_fa:mem_mb=16000
+        #  - pav_align_map:mem_mb=52000
+        #  - pav_call_cigar:mem_mb=8000
+        #  - pav_call_lg_discover:mem_mb=16000
+        #  - pav_call_inv_batch:mem_mb=8000
+        #  - pav_call_integrate_sources:mem_mb=8000
+        #  - pav_call_cigar_merge:mem_mb=8000
+        #  - pav_call_merge_haplotypes_batch:mem_mb=8000
+        #  - pav_call_merge_haplotypes_batch:time="16:0:0"
 restart-times: 0
 max-jobs-per-second: 10
 max-status-checks-per-second: 1
