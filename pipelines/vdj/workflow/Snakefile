@@ -415,7 +415,7 @@ use rule process_gene_beds as process_reference_gene_beds with:
     input:
         rules.merge_reference_gene_beds.output,
     output:
-        REF_GENE_ALIGN_PATH / "final_genes.bed",
+        REF_GENE_ALIGN_PATH / "final_genes_{ref}.bed",
 
 
 rule merge_rank_reference_gene_beds:
@@ -423,7 +423,7 @@ rule merge_rank_reference_gene_beds:
         bed=rules.process_reference_gene_beds.output,
         order="static/gene_order.tsv",
     output:
-        REF_GENE_ALIGN_PATH / "allhaps_genes.bed",
+        REF_GENE_ALIGN_PATH / "allhaps_genes_{ref}.bed",
     conda:
         "envs/master.yml"
     script:
@@ -434,8 +434,8 @@ rule process_reference_vdj_genes:
     input:
         rules.filter_vdj_genes.output,
     output:
-        loci=REF_GENE_ALIGN_PATH / "loci.tsv",
-        genes=REF_GENE_ALIGN_PATH / "genes.tsv",
+        loci=REF_GENE_ALIGN_PATH / "loci_{ref}.tsv",
+        genes=REF_GENE_ALIGN_PATH / "genes_{ref}.tsv",
     conda:
         "envs/master.yml"
     script:
@@ -473,8 +473,8 @@ use rule make_wizzy_plots as make_wizzy_reference_gene_plots with:
         loci=rules.process_reference_vdj_genes.output.loci,
         genes=rules.merge_rank_reference_gene_beds.output,
     output:
-        unmapped=REF_GENE_ALIGN_PATH / "unmapped.pdf",
-        mapped=REF_GENE_ALIGN_PATH / "mapped.pdf",
+        unmapped=REF_GENE_ALIGN_PATH / "unmapped_{ref}.pdf",
+        mapped=REF_GENE_ALIGN_PATH / "mapped_{ref}.pdf",
 
 
 rule all:
