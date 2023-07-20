@@ -1,5 +1,18 @@
 from pathlib import Path
 
+refs = {
+    "chm13": {
+        "fa": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
+        "gff": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz",
+        "ftbl": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_feature_table.txt.gz",
+    },
+    "hg38": {
+        "fa": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
+        "gff": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_genomic.gff.gz",
+        "ftbl": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_feature_table.txt.gz",
+    },
+}
+
 conf = {
     "hg2_07": {
         "asm_url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/scratch/HG002/assemblies/drafts/assembly.v0.7.fasta",
@@ -23,8 +36,6 @@ conf = {
     },
 }
 
-GAIRR_DIR = Path("resources/tools/gAIRR")
-GENE_PATH = GAIRR_DIR / "example/material/{gene}_alleles_parsed.fasta"
 GENES = [
     "TCRV",
     "TCRJ",
@@ -39,6 +50,158 @@ wildcard_constraints:
     gene=f"({'|'.join(GENES)})",
 
 
+rule download_asm:
+    output:
+        "resources/assemblies/{asm}.fa",
+    params:
+        url=lambda w: conf[w.asm]["asm_url"],
+    shell:
+        """
+        curl -qSs --fail -L {params.url} > {output}
+        """
+
+
+rule download_reference:
+    output:
+        "resources/references/{ref}.fa",
+    params:
+        url=lambda w: refs[w.ref]["fa"],
+    shell:
+        """
+        curl -qSs --fail -L {params.url} | gunzip -c > {output}
+        """
+
+
+use rule download_reference as download_gff with:
+    output:
+        "resources/references/{ref}.gff",
+    params:
+        url=lambda w: refs[w.ref]["gff"],
+
+
+rule download_accession_mapper:
+    output:
+        "resources/references/{ref}_accession.txt",
+    params:
+        url=lambda w: refs[w.ref]["ftbl"],
+    shell:
+        """
+        curl -qSs --fail -L {params.url} | \
+        gunzip -c | \
+        awk -F'\t' 'OFS="\t" {{print $7,"chr"$6 }}' | \
+        grep NC_ | \
+        sort -k1 | \
+        uniq > {output}
+        """
+
+
+################################################################################
+# liftover
+
+
+rule build_chroms_mapper:
+    output:
+        "resources/{asm}/chrom_mapper_{hap}.txt",
+    params:
+        stream=lambda w: "\n".join(
+            f"{k},{v}" for k, v in conf[w.asm]["chrom_maps"][w.hap].items()
+        ),
+    shell:
+        """
+        echo -e '{params.stream}' > {output}
+        """
+
+
+rule filter_asm_haps:
+    input:
+        rules.download_asm.output,
+    output:
+        "results/asm/{asm}_{hap}.fa",
+    params:
+        chroms=lambda w: " ".join(list(conf[w.asm]["chrom_maps"][w.hap].values())),
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools faidx {input} {params.chroms} > {output}
+        """
+
+
+rule filter_vdj_genes:
+    input:
+        gff=rules.download_gff.output,
+        mapper=rules.download_accession_mapper.output,
+    output:
+        "results/references/{ref}_immuno.gff",
+    shell:
+        """
+        grep -E 'ID=gene-(IG(H|K|L|D)|TR(A|B|G|D))' {input.gff} | \
+        grep -E 'immunoglobulin|T cell receptor' | \
+        grep -vE 'RNA|polypeptide' | \
+        awk -F'\t' 'NR==FNR {{a[$1]=$2;next}} OFS="\t" {{$1=($1 in a)?a[$1]:"UNK "$1}} 1' {input.mapper} - | \
+        grep -E '(chr2|chr7|chr14|chr22)' > {output} 
+        """
+
+
+rule lift_vdj_genes:
+    input:
+        chroms=rules.build_chroms_mapper.output,
+        asm=rules.filter_asm_haps.output,
+        chm13=expand(rules.download_reference.output, ref="chm13"),
+        genes=expand(rules.filter_vdj_genes.output, ref="chm13"),
+    output:
+        mapped="results/liftoff/{asm}/mapped_{hap}.gff",
+        unmapped="results/liftoff/{asm}/unmapped_{hap}.txt",
+        intermediate=directory("results/liftoff/{asm}/intermediate_{hap}"),
+    log:
+        "results/liftoff/{asm}/lift_{hap}.log",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        liftoff -f static/features.txt \
+        -chroms {input.chroms} \
+        -g {input.genes} \
+        -o {output.mapped} \
+        -u {output.unmapped} \
+        -dir {output.intermediate} \
+        {input.asm} {input.chm13} > {log} 2>&1
+        """
+
+
+rule process_lifted_genes:
+    input:
+        **{
+            f"mapped_{h}": expand(
+                rules.lift_vdj_genes.output.mapped, allow_missing=True, hap=h
+            )
+            for h in ["pat", "mat"]
+        },
+        **{
+            f"unmapped_{h}": expand(
+                rules.lift_vdj_genes.output.unmapped, allow_missing=True, hap=h
+            )
+            for h in ["pat", "mat"]
+        },
+        order="static/gene_order.tsv",
+    output:
+        loci="results/processed/{asm}_locus.tsv",
+        genes="results/processed/{asm}_genes.tsv",
+    conda:
+        "envs/master.yml"
+    script:
+        "scripts/process_liftover.R"
+
+
+################################################################################
+# allele mapping (asm)
+
+
+GAIRR_DIR = Path("resources/tools/gAIRR")
+GENE_PATH = GAIRR_DIR / "example/material/{gene}_alleles_parsed.fasta"
+GENE_ALIGN_PATH = Path("results/vdj_mapping/{asm}")
+
+
 rule download_allele:
     output:
         "resources/alleles/{gene}.fa",
@@ -50,84 +213,26 @@ rule download_allele:
         """
 
 
-rule build_chroms_mapper:
-    output:
-        "resources/{ref}/chrom_mapper_{hap}.txt",
-    params:
-        stream=lambda w: "\n".join(
-            f"{k},{v}" for k, v in conf[w.ref]["chrom_maps"][w.hap].items()
-        ),
-    shell:
-        """
-        echo -e '{params.stream}' > {output}
-        """
-
-
-rule download_asm:
-    output:
-        "resources/refs/{ref}.fa",
-    params:
-        url=lambda w: conf[w.ref]["asm_url"],
-    shell:
-        """
-        curl -qSs --fail -L {params.url} > {output}
-        """
-
-
-rule download_chm13:
-    output:
-        "resources/chm13.fa",
-    params:
-        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
-    shell:
-        """
-        curl -qSs --fail -L {params.url} | gunzip -c > {output}
-        """
-
-
-use rule download_chm13 as download_chm_gff with:
-    output:
-        "resources/chm13.gff",
-    params:
-        url="https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz",
-
-
-rule filter_asm_haps:
-    input:
-        rules.download_asm.output,
-    output:
-        "results/refs/{ref}_{hap}.fa",
-    params:
-        chroms=lambda w: " ".join(list(conf[w.ref]["chrom_maps"][w.hap].values())),
-    conda:
-        "envs/master.yml"
-    shell:
-        """
-        samtools faidx {input} {params.chroms} > {output}
-        """
-
-
 rule bwa_index_haps:
     input:
         rules.filter_asm_haps.output,
     output:
         rules.filter_asm_haps.output[0] + ".bwt",
+    log:
+        "log/bwa_index/{asm}_{hap}.log",
     conda:
         "envs/gairr.yml"
     shell:
         """
-        bwa index -b 500000000 {input}
+        bwa index -b 500000000 {input} 2> {log}
         """
-
-
-GENE_ALIGN_PATH = Path("results/vdj_mapping/{ref}")
 
 
 rule align_vdj_haps:
     input:
         # dummy, not used
         _index=rules.bwa_index_haps.output,
-        asm=rules.filter_asm_haps.output,
+        seq=rules.filter_asm_haps.output,
         gene=rules.download_allele.output,
     output:
         GENE_ALIGN_PATH / "intermediates" / "{gene}_{hap}.sam",
@@ -136,9 +241,11 @@ rule align_vdj_haps:
     conda:
         "envs/gairr.yml"
     threads: 16
+    log:
+        "log/bwa_mem/{asm}_{hap}_{gene}.log",
     shell:
         """
-        bwa mem -t {threads} {params.flags} {input.asm} {input.gene} > {output}
+        bwa mem -t {threads} {params.flags} {input.seq} {input.gene} > {output} 2> {log}
         """
 
 
@@ -241,73 +348,102 @@ rule merge_rank_gene_beds:
         "scripts/rank_mapped_genes.R"
 
 
-rule filter_vdj_genes:
-    input:
-        rules.download_chm_gff.output,
-    output:
-        "results/chm13_immuno.gff",
-    shell:
-        """
-        grep -E 'ID=gene-(IG(H|K|L|D)|TR(A|B|G|D))' {input} | \
-        sed 's/^NC_060946.1/chr22/' | \
-        sed 's/^NC_060938.1/chr14/' | \
-        sed 's/^NC_060931.1/chr7/' | \
-        sed 's/^NC_060926.1/chr2/' | \
-        grep '^chr' | \
-        grep -E 'immunoglobulin|T cell receptor' | \
-        grep -vE 'RNA|polypeptide' > \
-        {output} 
-        """
+################################################################################
+# allele mapping (haploid reference)
 
 
-rule lift_vdj_genes:
+REF_GENE_ALIGN_PATH = Path("results/vdj_mapping_references/{ref}")
+
+
+use rule bwa_index_haps as bwa_index_reference with:
     input:
-        chroms=rules.build_chroms_mapper.output,
-        asm_ref=rules.filter_asm_haps.output,
-        chm13_ref=rules.download_chm13.output,
-        genes=rules.filter_vdj_genes.output,
+        rules.download_reference.output,
     output:
-        mapped="results/liftoff/{ref}/mapped_{hap}.gff",
-        unmapped="results/liftoff/{ref}/unmapped_{hap}.txt",
-        intermediate=directory("results/liftoff/{ref}/intermediate_{hap}"),
+        rules.download_reference.output[0] + ".bwt",
     log:
-        "results/liftoff/{ref}/lift_{hap}.log",
-    conda:
-        "envs/master.yml"
-    shell:
-        """
-        liftoff -f static/features.txt \
-        -chroms {input.chroms} \
-        -g {input.genes} \
-        -o {output.mapped} \
-        -u {output.unmapped} \
-        -dir {output.intermediate} \
-        {input.asm_ref} {input.chm13_ref} > {log} 2>&1
-        """
+        "log/bwa_index/ref_{ref}.log",
 
 
-rule process_lifted_genes:
+use rule align_vdj_haps as align_vdj_reference with:
     input:
-        **{
-            f"mapped_{h}": expand(
-                rules.lift_vdj_genes.output.mapped, allow_missing=True, hap=h
-            )
-            for h in ["pat", "mat"]
-        },
-        **{
-            f"unmapped_{h}": expand(
-                rules.lift_vdj_genes.output.unmapped, allow_missing=True, hap=h
-            )
-            for h in ["pat", "mat"]
-        },
+        # dummy, not used
+        _index=rules.bwa_index_reference.output,
+        seq=rules.download_reference.output,
+        gene=rules.download_allele.output,
+    output:
+        REF_GENE_ALIGN_PATH / "intermediates" / "{gene}.sam",
+    log:
+        "log/bwa_mem/ref_{ref}_{gene}.log",
+
+
+use rule alignments_to_bed as reference_alignments_to_bed with:
+    input:
+        rules.align_vdj_reference.output,
+    output:
+        REF_GENE_ALIGN_PATH / "intermediates" / "{gene}.bed",
+
+
+use rule sort_alignments as sort_reference_alignments with:
+    input:
+        rules.align_vdj_reference.output,
+    output:
+        REF_GENE_ALIGN_PATH / "intermediates" / "{gene}.bam",
+
+
+use rule merge_gene_alignments as merge_reference_gene_alignments with:
+    input:
+        expand(rules.sort_reference_alignments.output, allow_missing=True, gene=GENES),
+    output:
+        REF_GENE_ALIGN_PATH / "all_genes.bam",
+
+
+use rule index_gene_alignments as index_reference_gene_alignments with:
+    input:
+        rules.merge_reference_gene_alignments.output,
+    output:
+        rules.merge_reference_gene_alignments.output[0] + ".bai",
+
+
+use rule merge_gene_beds as merge_reference_gene_beds with:
+    input:
+        expand(rules.reference_alignments_to_bed.output, allow_missing=True, gene=GENES),
+    output:
+        REF_GENE_ALIGN_PATH / "intermediates" / "all_genes.bed",
+
+
+use rule process_gene_beds as process_reference_gene_beds with:
+    input:
+        rules.merge_reference_gene_beds.output,
+    output:
+        REF_GENE_ALIGN_PATH / "final_genes.bed",
+
+
+rule merge_rank_reference_gene_beds:
+    input:
+        bed=rules.process_reference_gene_beds.output,
         order="static/gene_order.tsv",
     output:
-        loci="results/processed/{ref}_locus.tsv",
-        genes="results/processed/{ref}_genes.tsv",
+        REF_GENE_ALIGN_PATH / "allhaps_genes.bed",
     conda:
         "envs/master.yml"
     script:
-        "scripts/process_liftover.R"
+        "scripts/rank_reference_mapped_genes.R"
+
+
+rule process_reference_vdj_genes:
+    input:
+        rules.filter_vdj_genes.output,
+    output:
+        loci=REF_GENE_ALIGN_PATH / "loci.tsv",
+        genes=REF_GENE_ALIGN_PATH / "genes.tsv",
+    conda:
+        "envs/master.yml"
+    script:
+        "scripts/split_vdj.R"
+
+
+################################################################################
+# plotting
 
 
 rule make_wizzy_plots:
@@ -315,8 +451,8 @@ rule make_wizzy_plots:
         loci=rules.process_lifted_genes.output.loci,
         genes=rules.process_lifted_genes.output.genes,
     output:
-        unmapped="results/plots/{ref}/unmapped.pdf",
-        mapped="results/plots/{ref}/mapped.pdf",
+        unmapped="results/plots/{asm}/unmapped.pdf",
+        mapped="results/plots/{asm}/mapped.pdf",
     conda:
         "envs/master.yml"
     script:
@@ -332,14 +468,27 @@ use rule make_wizzy_plots as make_wizzy_gene_plots with:
         mapped=GENE_ALIGN_PATH / "mapped.pdf",
 
 
+use rule make_wizzy_plots as make_wizzy_reference_gene_plots with:
+    input:
+        loci=rules.process_reference_vdj_genes.output.loci,
+        genes=rules.merge_rank_reference_gene_beds.output,
+    output:
+        unmapped=REF_GENE_ALIGN_PATH / "unmapped.pdf",
+        mapped=REF_GENE_ALIGN_PATH / "mapped.pdf",
+
+
 rule all:
     input:
         expand(
             rules.make_wizzy_plots.output + rules.make_wizzy_gene_plots.output,
-            ref=list(conf),
+            asm=list(conf),
         ),
         expand(
             rules.index_gene_alignments.output + rules.process_gene_beds.output,
-            ref=list(conf),
+            asm=list(conf),
             hap=["mat", "pat"],
+        ),
+        expand(
+            rules.make_wizzy_reference_gene_plots.output,
+            ref=["chm13", "hg38"],
         ),

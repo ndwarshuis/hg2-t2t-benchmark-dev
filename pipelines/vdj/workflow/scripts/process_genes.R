@@ -15,7 +15,7 @@ df_expanded <- df %>%
          score = as.numeric(str_replace(score, "AS:i:", "")),
          gene = str_extract(gene, ".*\\|(.*)\\*[0-9]+\\|.*", 1),
          .locus = str_sub(gene, 1, 3),
-         .chrom = str_extract(chrom, "(chr[0-9]+)_.*", 1),
+         .chrom = str_extract(chrom, "(chr[0-9]+)_?.*", 1),
          scorefrac = score / (end - start)) %>%
   mutate(correct_map = case_when(.locus == "TRA" & .chrom == "chr14" ~ TRUE,
                                  .locus == "TRD" & .chrom == "chr14" ~ TRUE,
