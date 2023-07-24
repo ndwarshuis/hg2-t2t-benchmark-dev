@@ -8,13 +8,12 @@ res_dir = Path("results")
 res_asm_dir = res_dir / "asm"
 res_dip_dir = res_dir / "dipcall" / "{parent}"
 
-
 def verkko_url(wildcards):
     hap = wildcards.verkko_hap
     if hap == "pat":
-        return "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.7/v0.7.pat_X_EBV_MT.fasta"
+        return "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v0.9.pat_X_EBV_MT.fasta"
     elif hap == "mat":
-        return "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.7/v0.7.mat_Y_EBV_MT.fasta"
+        return "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v0.9.mat_Y_EBV_MT.fasta"
     else:
         assert False, "Petrucci is not impressed with your fingers (wrong hap)"
 
