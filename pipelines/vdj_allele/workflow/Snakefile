@@ -1,0 +1,152 @@
+from pathlib import Path
+
+refs = {
+    "chm13": {
+        "fa": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
+        "gff": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_genomic.gff.gz",
+        "ftbl": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_009914755.1_T2T-CHM13v2.0/GCF_009914755.1_T2T-CHM13v2.0_feature_table.txt.gz",
+    },
+    "hg38": {
+        "fa": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
+        "gff": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_genomic.gff.gz",
+        "ftbl": "https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/all_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_feature_table.txt.gz",
+    },
+}
+
+conf = {
+    "hg2_07": {
+        "asm_url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/scratch/HG002/assemblies/drafts/assembly.v0.7.fasta",
+        "chrom_maps": {
+            h: {
+                **{f"chr{i}": f"chr{i}_{H}" for i in [*range(1, 23)]},
+                **{"chrX": "chrX_MATERNAL", "chrY": "chrY_PATERNAL"},
+            }
+            for h, H in [("pat", "PATERNAL"), ("mat", "MATERNAL")]
+        },
+    },
+    "hg2_09": {
+        "asm_url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v0.9.fasta",
+        "chrom_maps": {
+            h: {
+                **{f"chr{i}": f"chr{i}_{H}" for i in [*range(1, 23)]},
+                **{"chrX": "chrX_MATERNAL", "chrY": "chrY_PATERNAL"},
+            }
+            for h, H in [("pat", "PATERNAL"), ("mat", "MATERNAL")]
+        },
+    },
+}
+
+GENES = [
+    "TCRV",
+    "TCRJ",
+    "BCRV",
+    "BCRJ",
+    "TCRD_plusHep",
+    "BCRD_plusHep",
+]
+
+
+wildcard_constraints:
+    gene=f"({'|'.join(GENES)})",
+
+
+################################################################################
+# allele mapping (asm)
+
+
+GAIRR_DIR = Path("resources/tools/gAIRR")
+GENE_PATH = GAIRR_DIR / "example/material/{gene}_alleles_parsed.fasta"
+GENE_ALIGN_PATH = Path("results/vdj_mapping/{asm}")
+
+
+rule download_allele:
+    output:
+        "resources/alleles/{gene}.fa",
+    shell:
+        """
+        curl -sSqL --fail \
+        https://raw.githubusercontent.com/maojanlin/gAIRRsuite/72df9130ea87d6216b2ca76856ea6b8f8c81a29f/example/material/{wildcards.gene}_alleles_parsed.fasta \
+        > {output}
+        """
+
+
+rule bwa_index_alleles:
+    input:
+        rules.filter_asm_haps.output,
+    output:
+        rules.filter_asm_haps.output[0] + ".bwt",
+    log:
+        "log/bwa_index/{asm}_{hap}.log",
+    conda:
+        "envs/gairr.yml"
+    shell:
+        """
+        bwa index -b 500000000 {input} 2> {log}
+        """
+
+
+rule align_reads:
+    input:
+        # dummy, not used
+        _index=rules.bwa_index_alleles.output,
+        allele=rules.download_allele.output,
+        reads1=rules.filter_asm_haps.output,
+        reads2=rules.filter_asm_haps.output,
+    output:
+        GENE_ALIGN_PATH / "{gene}_{sc_id}.sam",
+    # ID = AACJ5GNM5-PL02-SC081
+    params:
+        flags=lambda w: "-a -T 10" if "plusHep" in w.gene else "-a",
+        header=lambda w: "\t".join(
+            [
+                "@RG",
+                f"ID:{w.sc_id}",
+                "SM:HG002",
+                f"LB:{w.sc_id}",
+                f"PU:{w.sc_id}",
+                "CN:BIOSKRYB",
+                "PL:ILLUMINA",
+            ]
+        ),
+    conda:
+        "envs/gairr.yml"
+    threads: 16
+    log:
+        bwa="log/bwa_mem/{sc_id}_{gene}.log",
+        sam="log/samview/{sc_id}_{gene}.log",
+    shell:
+        """
+        bwa mem {input.allele} \
+        -R {params.header} \
+        -K 100000000 \
+        -Y
+        -t {threads}
+        {input.reads1} {input.reads2} 2> {log.bwa} | \
+        samtools view -h -F 0x4 > {output} 2> {log.sam}
+        """
+
+
+rule process_alignments:
+    input:
+        expand(rules.align_reads.output, allow_missing=True, gene=GENES),
+    output:
+        GENE_ALIGN_PATH / "{sc_id}.txt",
+    script:
+        "someRscript"
+
+
+rule all:
+    input:
+        expand(
+            rules.make_wizzy_plots.output + rules.make_wizzy_gene_plots.output,
+            asm=list(conf),
+        ),
+        expand(
+            rules.index_gene_alignments.output + rules.process_gene_beds.output,
+            asm=list(conf),
+            hap=["mat", "pat"],
+        ),
+        expand(
+            rules.make_wizzy_reference_gene_plots.output,
+            ref=["chm13", "hg38"],
+        ),
