@@ -1,5 +1,7 @@
 from pathlib import Path
 
+IDS = list(map(str, [81, 82, 84, 85, 89]))
+
 GENES = [
     "TCRV",
     "TCRJ",
@@ -133,18 +135,16 @@ rule get_coverage:
 
 rule process_coverage:
     input:
-        rules.get_coverage.output,
+        expand(rules.get_coverage.output, read_id=IDS),
     output:
-        GENE_ALIGN_PATH / "coverage_plots.pdf",
+        "results/coverage_plot.pdf",
     conda:
-        "envs/master.yml"
+        "envs/tidy.yml"
     script:
         "scripts/plot.R"
 
 
 rule all:
     input:
-        expand(
-            rules.get_coverage.output + rules.index_alignments.output,
-            read_id=list(["test1"]),
-        ),
+        rules.process_coverage.output,
+        expand(rules.index_alignments.output, read_id=IDS),
