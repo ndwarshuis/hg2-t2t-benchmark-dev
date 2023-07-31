@@ -1,0 +1,7 @@
+log
+results
+resources
+.snakemake
+cluster_logs
+Rplots.pdf
+inputs
