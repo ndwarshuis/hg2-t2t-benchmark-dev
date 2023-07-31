@@ -96,9 +96,6 @@ df <- sam_df %>%
   select(-matches("revcomp")) %>%
   # filter out genes that doesn't have a known order (not as useful)
   filter(!is.na(gene_pos)) %>%
-  # compare the orientation of each alignment with the expected orientation (we
-  # expect "correct" alignments to all be in the same direction depending on
-  # the orientation of the read
   relocate(rname, pos, end) %>%
   # do cheap bedtools merge thing; for every overlapping region, keep the
   # start/end of the first/last region
@@ -166,25 +163,46 @@ vdj_summary <- dedup_allele_df %>%
             nD = sum(major == "D"),
             nJ = sum(major == "J"))
 
-## dedup_allele_df %>%
-##   group_by(rname) %>%
-##   filter(n() > 2) %>%
+hasJ_df <- dedup_allele_df %>%
+  group_by(rname) %>%
+  filter(n() > 2)
+  ## filter(rname %in% (vdj_summary %>% filter(nJ > 1) %>% pull(rname)))
+
+hasJ_df %>%
+  mutate(revfrac = mean(is_reversed),
+         revcat = case_when(revfrac > 0.95 ~ "reverse",
+                            revfrac < 0.05 ~ "forward",
+                            TRUE ~ "both")) %>%
+  filter(revcat != "both") %>%
+  ggplot(aes(gene_pos, merge_pos, group = rname, color = major)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(c("revcat"))
+
+hasJ_df %>%
+  mutate(revfrac = mean(is_reversed),
+         revcat = case_when(revfrac > 0.95 ~ "reverse",
+                            revfrac < 0.05 ~ "forward",
+                            TRUE ~ "both")) %>%
+  filter(revcat != "both") %>%
+  mutate(merge_pos = if_else(revcat == "forward", merge_pos, seqlen - merge_pos)) %>%
+  ## group_by(rname) %>%
+  ## arrange(merge_pos) %>%
+  ## mutate(last_gene_pos = lag(gene_pos),
+  ##        gap = if_else(is.na(last_gene_pos), 0, gene_pos - last_gene_pos - 1)) %>%
+  ## ungroup() %>%
+  ggplot(aes(gene_pos, fct_reorder(rname, gene_pos), group = rname, fill = major)) +
+  geom_tile() +
+  theme(axis.text.y = element_blank())
+
+## hasJ_df %>%
 ##   group_by(gene_pos, major) %>%
 ##   tally() %>%
 ##   ggplot(aes(gene_pos, n, fill = major)) +
 ##   geom_col()
 
-dedup_allele_df %>%
-  ## filter(rname %in% badV) %>%
-## perfect_df %>%
-  group_by(rname) %>%
-  filter(n() > 2) %>%
-  filter(rname %in% (vdj_summary %>% filter(nJ > 1) %>% pull(rname))) %>%
-  mutate(revfrac = mean(is_reversed),
-         revcat = case_when(revfrac > 0.95 ~ "reverse",
-                            revfrac < 0.05 ~ "forward",
-                            TRUE ~ "both")) %>%
-  ggplot(aes(gene_pos, merge_pos, group = rname, color = major)) +
-  geom_point() +
-  geom_line() +
-  facet_wrap(c("revcat"))
+# make bed file
+hasJ_df %>%
+  mutate(gene = sprintf("%s%s*%s", major, minor, allele)) %>%
+  select(-major, -minor, -allele, -pos, -end, -seqlen) %>%
+  relocate(rname, merge_pos, merge_end, gene)

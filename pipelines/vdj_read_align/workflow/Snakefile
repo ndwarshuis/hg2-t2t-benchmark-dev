@@ -117,60 +117,69 @@ rule split_bam:
         """
 
 
-checkpoint split_fastq:
+rule split_fastq:
     input:
-        rules.split_bam.output,
+        bam=rules.split_bam.output[0],
+        alleles=rules.split_igmt_goodies.output[0],
     output:
-        directory(ALIGN_PATH / "split" / "{locus}" / "fasta"),
+        fasta=directory(ALIGN_PATH / "split" / "{locus}" / "fasta"),
+        sam=directory(ALIGN_PATH / "split" / "{locus}" / "aligned"),
+        merged=ALIGN_PATH / "split" / "{locus}" / "merged.bam"
+    log:
+        index="log/{bamid}/index/{locus}.log",
+        align="log/{bamid}/align/{locus}.log",
+    threads: 10
+    conda:
+        "envs/master.yml"
     script:
         "scripts/split_fastq.py"
 
 
-rule index_fasta:
-    input:
-        str(Path(rules.split_fastq.output[0]) / "{i}.fasta"),
-    output:
-        str(Path(rules.split_fastq.output[0]) / "{i}.fasta.bwt"),
-    log:
-        "log/{bamid}/index/{locus}/{i}.log",
-    conda:
-        "envs/master.yml"
-    shell:
-        """
-        bwa index {input} 2> {log}
-        """
+# rule index_fasta:
+#     input:
+#         str(Path(rules.split_fastq.output[0]) / "{i}.fasta"),
+#     output:
+#         str(Path(rules.split_fastq.output[0]) / "{i}.fasta.bwt"),
+#     log:
+#         "log/{bamid}/index/{locus}/{i}.log",
+#     conda:
+#         "envs/master.yml"
+#     shell:
+#         """
+#         bwa index {input} 2> {log}
+#         """
 
 
-rule align_alleles:
-    input:
-        _idx=rules.index_fasta.output,
-        template=rules.index_fasta.input,
-        alleles=rules.split_igmt_goodies.output,
-    output:
-        ALIGN_PATH / "split" / "{locus}" / "aligned" / "{i}.bam",
-    log:
-        "log/{bamid}/align/{locus}/{i}.log",
-    conda:
-        "envs/master.yml"
-    shell:
-        """
-        bwa mem -a {input.template} {input.alleles} 2> {log} | samtools view -b > {output}
-        """
+# rule align_alleles:
+#     input:
+#         _idx=rules.index_fasta.output,
+#         template=rules.index_fasta.input,
+#         alleles=rules.split_igmt_goodies.output,
+#     output:
+#         ALIGN_PATH / "split" / "{locus}" / "aligned" / "{i}.bam",
+#     log:
+#         "log/{bamid}/align/{locus}/{i}.log",
+#     conda:
+#         "envs/master.yml"
+#     shell:
+#         """
+#         bwa mem -a {input.template} {input.alleles} 2> {log} | samtools view -b > {output}
+#         """
 
 
-def fasta_input(wildcards):
-    o = checkpoints.split_fastq.get(**wildcards).output[0]
-    return expand(
-        rules.align_alleles.output,
-        locus=wildcards.locus,
-        bamid=wildcards.bamid,
-        i=glob_wildcards(os.path.join(o, "{i}.fasta")).i,
-    )
+# def fasta_input(wildcards):
+#     o = checkpoints.split_fastq.get(**wildcards).output[0]
+#     return expand(
+#         Path(rules.split_fastq.output.sam) / "{i}.bam",
+#         locus=wildcards.locus,
+#         bamid=wildcards.bamid,
+#         i=glob_wildcards(os.path.join(o, "{i}.fasta")).i,
+#     )
 
 
 rule cat_alignments:
     input:
-        fasta_input,
+        rules.split_fastq.output.merged,
     output:
         sam=ALIGN_PATH / "split" / "{locus}" / "all.sam",
         tags=ALIGN_PATH / "split" / "{locus}" / "all.tags",
@@ -178,8 +187,7 @@ rule cat_alignments:
         "envs/master.yml"
     shell:
         """
-        samtools merge -o - {input} | \
-        samtools view -F 0x4 -F 0x100 | \
+        samtools view -F 0x4 -F 0x100 {input} | \
         grep -v "SA:" | \
         tee >(cut -f -11 > {output.sam}) | \
         cut -f 12- > {output.tags}
