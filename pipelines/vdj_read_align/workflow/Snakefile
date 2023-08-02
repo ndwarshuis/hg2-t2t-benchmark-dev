@@ -121,13 +121,17 @@ rule split_fastq:
     input:
         bam=rules.split_bam.output[0],
         alleles=rules.split_igmt_goodies.output[0],
+        motifs="static/flank.fa",
     output:
         fasta=directory(ALIGN_PATH / "split" / "{locus}" / "fasta"),
         sam=directory(ALIGN_PATH / "split" / "{locus}" / "aligned"),
-        merged=ALIGN_PATH / "split" / "{locus}" / "merged.bam"
+        allele_merged=ALIGN_PATH / "split" / "{locus}" / "allele_merged.bam",
+        motif_merged=ALIGN_PATH / "split" / "{locus}" / "motif_merged.bam",
     log:
-        index="log/{bamid}/index/{locus}.log",
-        align="log/{bamid}/align/{locus}.log",
+        allele_index="log/{bamid}/index/{locus}_allele.log",
+        motif_index="log/{bamid}/index/{locus}_motif.log",
+        allele_align="log/{bamid}/align/{locus}_allele.log",
+        motif_align="log/{bamid}/align/{locus}_motif.log",
     threads: 10
     conda:
         "envs/master.yml"
@@ -135,54 +139,12 @@ rule split_fastq:
         "scripts/split_fastq.py"
 
 
-# rule index_fasta:
-#     input:
-#         str(Path(rules.split_fastq.output[0]) / "{i}.fasta"),
-#     output:
-#         str(Path(rules.split_fastq.output[0]) / "{i}.fasta.bwt"),
-#     log:
-#         "log/{bamid}/index/{locus}/{i}.log",
-#     conda:
-#         "envs/master.yml"
-#     shell:
-#         """
-#         bwa index {input} 2> {log}
-#         """
-
-
-# rule align_alleles:
-#     input:
-#         _idx=rules.index_fasta.output,
-#         template=rules.index_fasta.input,
-#         alleles=rules.split_igmt_goodies.output,
-#     output:
-#         ALIGN_PATH / "split" / "{locus}" / "aligned" / "{i}.bam",
-#     log:
-#         "log/{bamid}/align/{locus}/{i}.log",
-#     conda:
-#         "envs/master.yml"
-#     shell:
-#         """
-#         bwa mem -a {input.template} {input.alleles} 2> {log} | samtools view -b > {output}
-#         """
-
-
-# def fasta_input(wildcards):
-#     o = checkpoints.split_fastq.get(**wildcards).output[0]
-#     return expand(
-#         Path(rules.split_fastq.output.sam) / "{i}.bam",
-#         locus=wildcards.locus,
-#         bamid=wildcards.bamid,
-#         i=glob_wildcards(os.path.join(o, "{i}.fasta")).i,
-#     )
-
-
-rule cat_alignments:
+rule cat_alleles:
     input:
-        rules.split_fastq.output.merged,
+        rules.split_fastq.output.allele_merged,
     output:
-        sam=ALIGN_PATH / "split" / "{locus}" / "all.sam",
-        tags=ALIGN_PATH / "split" / "{locus}" / "all.tags",
+        sam=ALIGN_PATH / "split" / "{locus}" / "all_allele.sam",
+        tags=ALIGN_PATH / "split" / "{locus}" / "all_allele.tags",
     conda:
         "envs/master.yml"
     shell:
@@ -194,6 +156,33 @@ rule cat_alignments:
         """
 
 
+rule cat_motifs:
+    input:
+        rules.split_fastq.output.motif_merged,
+    output:
+        ALIGN_PATH / "split" / "{locus}" / "all_motif.sam",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools view {input} | grep -v '^@' > {output}
+        """
+
+rule write_rss_bed:
+    input:
+        rules.cat_motifs.output,
+    output:
+        ALIGN_PATH / "split" / "{locus}" / "final" / "rss.bed",
+    conda:
+        "envs/tidy.yml",
+    script:
+        "scripts/process_rss.R"
+
+
 rule all:
     input:
-        expand(rules.cat_alignments.output, locus=REGIONS, bamid=BAMS),
+        expand(
+            rules.cat_alleles.output + rules.write_rss_bed.output,
+            locus=REGIONS,
+            bamid=["ont"],
+        ),

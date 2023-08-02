@@ -9,12 +9,14 @@ Paths = namedtuple(
     "Paths",
     [
         "alleles_in",
+        "motifs_in",
         "bam_in",
-        "index_log",
-        "align_log",
+        "allele_index_log",
+        "motif_index_log",
+        "allele_align_log",
+        "motif_align_log",
         "fa_out",
         "sam_out",
-        "merged_out",
     ],
 )
 
@@ -27,20 +29,27 @@ def fasta_name(ps: Paths, i: int) -> str:
     return ps.fa_out / f"{i}.fasta"
 
 
-def bam_name(ps: Paths, i: int) -> str:
-    return ps.sam_out / f"{i}.bam"
+def bam_name(ps: Paths, i: int, rss: bool) -> str:
+    return ps.sam_out / f"{i}_{'rss' if rss else 'allele'}.bam"
 
 
 def index_align(ps: Paths, i: int) -> None:
     fasta_path = fasta_name(ps, i)
-    sam_path = bam_name(ps, i)
-    with open(ps.index_log, "w") as f:
+    allele_path = bam_name(ps, i, False)
+    rss_path = bam_name(ps, i, True)
+    with open(ps.allele_index_log, "w") as f:
         sp.run(
             ["bwa", "index", fasta_path],
             stderr=f,
             check=True,
         )
-    with open(sam_path, "wb") as fo, open(ps.align_log, "w") as fa:
+    with open(ps.motif_index_log, "w") as f:
+        sp.run(
+            ["bowtie-build", "-q", fasta_path, fasta_path],
+            stderr=f,
+            check=True,
+        )
+    with open(allele_path, "wb") as fo, open(ps.allele_align_log, "w") as fa:
         mem = sp.Popen(
             ["bwa", "mem", "-a", fasta_path, ps.alleles_in],
             stderr=fa,
@@ -49,6 +58,21 @@ def index_align(ps: Paths, i: int) -> None:
         sp.run(
             ["samtools", "view", "-b"],
             stdin=mem.stdout,
+            stdout=fo,
+            check=True,
+        )
+        mem.wait()
+        if mem.returncode != 0:
+            exit(1)
+    with open(rss_path, "wb") as fo, open(ps.motif_align_log, "w") as fa:
+        bowtie = sp.Popen(
+            ["bowtie", "-a", "-x", fasta_path, "-f", ps.motifs_in, "-S"],
+            stderr=fa,
+            stdout=sp.PIPE,
+        )
+        sp.run(
+            ["samtools", "view", "-b"],
+            stdin=bowtie.stdout,
             stdout=fo,
             check=True,
         )
@@ -65,22 +89,20 @@ def merge_bam(bams: list[Path], out):
     sp.run(["samtools", "merge", "-o", "-", *bams], check=True, stdout=out)
 
 
-# def merge_sub_bam(ps: Paths, bams: list[Path]):
-#     fp = tempfile.NamedTemporaryFile()
-#     merge_bam(bams, fp)
-#     return fp
-
-
 def main(smk):
     ps = Paths(
         alleles_in=Path(smk.input["alleles"]),
+        motifs_in=Path(smk.input["motifs"]),
         bam_in=Path(smk.input["bam"]),
-        index_log=Path(smk.log["index"]),
-        align_log=Path(smk.log["align"]),
+        allele_index_log=Path(smk.log["allele_index"]),
+        motif_index_log=Path(smk.log["motif_index"]),
+        allele_align_log=Path(smk.log["allele_align"]),
+        motif_align_log=Path(smk.log["motif_align"]),
         fa_out=Path(smk.output["fasta"]),
         sam_out=Path(smk.output["sam"]),
-        merged_out=Path(smk.output["merged"]),
     )
+    alleles_merged_out = Path(smk.output["allele_merged"])
+    motifs_merged_out = Path(smk.output["motif_merged"])
 
     n = 0
     for p in [ps.fa_out, ps.sam_out]:
@@ -99,19 +121,20 @@ def main(smk):
     with Pool(processes=smk.threads) as pool:
         pool.map(partial(index_align, ps), range(n))
 
-    bams_to_merge = [bam_name(ps, i) for i in range(n)]
-    with open(ps.merged_out, "wb") as f:
-        if n < BAMCHUNK:
-            merge_bam(bams_to_merge, f)
-        else:
-            chunked = [
-                (c, NamedTemporaryFile()) for c in chunky_list(BAMCHUNK, bams_to_merge)
-            ]
-            for cs, t in chunked:
-                merge_bam(cs, t)
-            merge_bam([t.name for _, t in chunked], f)
-            for _, t in chunked:
-                t.close()
+    def merge_output(path, ns):
+        with open(path, "wb") as f:
+            if n < BAMCHUNK:
+                merge_bam(ns, f)
+            else:
+                chunked = [(c, NamedTemporaryFile()) for c in chunky_list(BAMCHUNK, ns)]
+                for cs, t in chunked:
+                    merge_bam(cs, t)
+                merge_bam([t.name for _, t in chunked], f)
+                for _, t in chunked:
+                    t.close()
+
+    merge_output(alleles_merged_out, [bam_name(ps, i, False) for i in range(n)])
+    merge_output(motifs_merged_out, [bam_name(ps, i, True) for i in range(n)])
 
 
 main(snakemake)  # noqa: F821

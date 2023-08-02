@@ -5,3 +5,4 @@ dependencies:
   - samtools
   - bwa
   - seqkit
+  - bowtie
