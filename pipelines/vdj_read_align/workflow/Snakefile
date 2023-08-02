@@ -168,13 +168,28 @@ rule cat_motifs:
         samtools view {input} | grep -v '^@' > {output}
         """
 
+
+rule write_alleles_bed:
+    input:
+        tags=rules.cat_alleles.output.tags,
+        sam=rules.cat_alleles.output.sam,
+        headers=rules.parse_igmt_headers.output,
+        order="static/gene_order.tsv",
+    output:
+        ALIGN_PATH / "split" / "{locus}" / "final" / "allele.bed",
+    conda:
+        "envs/tidy.yml"
+    script:
+        "scripts/process_allele.R"
+
+
 rule write_rss_bed:
     input:
         rules.cat_motifs.output,
     output:
         ALIGN_PATH / "split" / "{locus}" / "final" / "rss.bed",
     conda:
-        "envs/tidy.yml",
+        "envs/tidy.yml"
     script:
         "scripts/process_rss.R"
 
@@ -182,7 +197,7 @@ rule write_rss_bed:
 rule all:
     input:
         expand(
-            rules.cat_alleles.output + rules.write_rss_bed.output,
+            rules.write_alleles_bed.output + rules.write_rss_bed.output,
             locus=REGIONS,
             bamid=["ont"],
         ),
