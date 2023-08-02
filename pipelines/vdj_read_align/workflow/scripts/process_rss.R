@@ -1,7 +1,7 @@
 library(tidyverse)
 
 flank_df <- readr::read_tsv(
-  snakemake@input,
+  snakemake@input[[1]],
   col_types = "cicidcciicccccc",
   col_names = c(
     "qname",
@@ -53,11 +53,15 @@ get_rss <- function(df, forward) {
     mutate(is12 = FALSE)
   # combine rows and summarize
   bind_rows(df12, df23) %>%
-    mutate(edit = edit + edit3p,
-           is_reversed = !forward,
-           spacer = pos3p - pos - offset,
-           end = pos3p + ifelse(forward, 9, 7)) %>%
-    select(rname, pos, end, edit, spacer, is12)
+    mutate(
+      edit = edit + edit3p,
+      strand = if_else(forward, "+", "-"),
+      spacer = pos3p - pos - offset,
+      end = pos3p + ifelse(forward, 9, 7),
+      thickStart = pos + ifelse(forward, 7, 9),
+      thickEnd = end - ifelse(forward, 9, 7)
+    ) %>%
+  select(-matches("lower"), -matches("upper"), -matches("3p"))
 }
 
 # write output to a bed file for easy debugging as necessary;
@@ -68,8 +72,9 @@ get_rss(flank_df, TRUE) %>%
   bind_rows(get_rss(flank_df, FALSE)) %>%
   arrange(rname, pos) %>%
   rename("#rname" = rname,
+
          start = pos) %>%
   mutate(name = if_else(is12, "RSS12", "RSS23"),
          score = 1000 - edit * 200) %>%
   relocate(`#rname`, start, end, name, score, strand, thickStart, thickEnd) %>%
-  write_tsv(snakemake@output)
+  write_tsv(snakemake@output[[1]])
