@@ -43,6 +43,8 @@ rule intersect_bam:
         """
 
 
+# extra grep -v is to remove a few duplicates that would make downstream steps
+# choke
 rule download_imgt_goodies:
     output:
         "resources/imgt_human.fa",
@@ -53,7 +55,10 @@ rule download_imgt_goodies:
     shell:
         """
         curl -SsLq --fail {params.url} | \
-        seqkit grep -r -n -p '.*Homo sapiens\|.*\|(V|D|J)-REGION.*' > {output}
+        seqkit grep -r -n -p '^[A-Z0-9]+\|(TRA|TRB|TRG|TRD|IGH|IGK|IGL).*\|Homo sapiens\|.*' | \
+        seqkit grep -v -r -n -p '^K01308\|IGHM\*02\|.*CH2.*$' | \
+        seqkit grep -v -r -n -p '^K01309\|IGHM\*02\|.*CH3.*$' \
+        > {output}
         """
 
 
@@ -61,13 +66,10 @@ rule split_igmt_goodies:
     input:
         rules.download_imgt_goodies.output,
     output:
-        "results/igmt/{locus}.fa",
-    conda:
-        "envs/master.yml"
-    shell:
-        """
-        seqkit grep -r -n -p '.*|{wildcards.locus}.*?|.*' {input} > {output}
-        """
+        fa="results/igmt/{locus}.fa",
+        header="results/igmt/{locus}_headers.fa",
+    script:
+        "scripts/split_igmt_db.py"
 
 
 rule parse_igmt_headers:
@@ -120,7 +122,7 @@ rule split_bam:
 rule split_fastq:
     input:
         bam=rules.split_bam.output[0],
-        alleles=rules.split_igmt_goodies.output[0],
+        alleles=rules.split_igmt_goodies.output.fa,
         motifs="static/flank.fa",
     output:
         fasta=directory(ALIGN_PATH / "split" / "{locus}" / "fasta"),
@@ -139,9 +141,46 @@ rule split_fastq:
         "scripts/split_fastq.py"
 
 
+rule sort_alleles:
+    input:
+        rules.split_fastq.output.allele_merged
+    output:
+        ALIGN_PATH / "split" / "{locus}" / "final" / "allele_sorted.bam",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools sort {input} | samtools view -q 30 -b > {output}
+        """
+
+
+rule index_alleles:
+    input:
+        rules.sort_alleles.output
+    output:
+        rules.sort_alleles.output[0] + ".bai"
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools index {input}
+        """
+
+
+rule cat_fasta:
+    input:
+        rules.split_fastq.output.fasta
+    output:
+        ALIGN_PATH / "split" / "{locus}" / "all_reads.fa",
+    shell:
+        """
+        cat {input}/*.fasta > {output}
+        """
+
+
 rule cat_alleles:
     input:
-        rules.split_fastq.output.allele_merged,
+        rules.sort_alleles.output,
     output:
         sam=ALIGN_PATH / "split" / "{locus}" / "all_allele.sam",
         tags=ALIGN_PATH / "split" / "{locus}" / "all_allele.tags",
@@ -173,7 +212,7 @@ rule write_alleles_bed:
     input:
         tags=rules.cat_alleles.output.tags,
         sam=rules.cat_alleles.output.sam,
-        headers=rules.parse_igmt_headers.output,
+        headers=rules.split_igmt_goodies.output.header,
         order="static/gene_order.tsv",
     output:
         ALIGN_PATH / "split" / "{locus}" / "final" / "allele.bed",
@@ -197,7 +236,7 @@ rule write_rss_bed:
 rule all:
     input:
         expand(
-            rules.write_alleles_bed.output + rules.write_rss_bed.output,
+            rules.write_alleles_bed.output + rules.write_rss_bed.output + rules.cat_fasta.output + rules.index_alleles.output,
             locus=REGIONS,
             bamid=["ont"],
         ),

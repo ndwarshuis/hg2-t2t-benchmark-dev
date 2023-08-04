@@ -4,40 +4,18 @@ order_df <- read_tsv(
   "../../static/gene_order.tsv",
   col_types = "ci"
 ) %>%
-  rename(gene_pos = pos) %>%
-  filter(gene != "IGHD") %>%
-  filter(str_sub(gene, 4, 4) %in% c("V", "D", "J"))
+  rename(gene_pos = pos)
 
 headers_df <- read_tsv(
-  "../../results/igmt/headers.tsv",
-  col_names = c(
-    "accession",
-    "gene",
-    "species",
-    "functionality",
-    "regiontype",
-    "pos",
-    "len",
-    "codonstart",
-    "nucaddstart",
-    "nucaddend",
-    "correction",
-    "numAA",
-    "numchars",
-    "partial",
-    "gene_revcomp"
-  ),
+  "../../results/igmt/IGH_headers.fa",
+  col_names = c("gene", "allele", "functionality", "gene_orientation"),
   col_types = "c"
 ) %>%
-  select(-accession, -species, -pos, -len, -codonstart, -correction,
-         -numAA, -matches("nuc"), -partial, -numchars, -regiontype) %>%
-  separate(gene, sep = "\\*", into = c("gene", "allele")) %>%
-  full_join(order_df, by = "gene") %>%
-  filter(!is.na(allele)) %>%
-  filter(!is.na(gene_pos)) %>%
+  inner_join(order_df, by = "gene") %>%
   filter(functionality != "ORF") %>%
   select(-functionality) %>%
-  mutate(gene_revcomp = !is.na(gene_revcomp))
+  mutate(gene_revcomp = gene_orientation == "-") %>%
+  select(-gene_orientation)
 
 tags_df <- read_lines(
   "../../results/immuno_alignments/ont/split/IGH/all_allele.tags"
@@ -60,7 +38,7 @@ tags_df <- read_lines(
 sam_df <- readr::read_tsv(
   "../../results/immuno_alignments/ont/split/IGH/all_allele.sam",
   col_names = c(
-    "qname",
+    "gene",
     "flag",
     "rname",
     "pos",
@@ -77,15 +55,14 @@ sam_df <- readr::read_tsv(
   bind_cols(tags_df)
 
 df <- sam_df %>%
-  mutate(gene = str_extract(qname, ".*\\|(.*)\\|.*", 1),
-         revcomp = (flag %% 32) %/% 16 == 1,
+  mutate(revcomp = (flag %% 32) %/% 16 == 1,
          seqlen = str_length(seq),
          end = pos + seqlen,
          scorefrac = score / seqlen) %>%
   # get rid of stuff we probably don't care about
   filter(mapq > 30) %>%
   filter(scorefrac > 0.9) %>%
-  select(-qname, -cigar, -rnext, -pnext, -edit_string, -seq, -flag, -tlen,
+  select(-cigar, -rnext, -pnext, -edit_string, -seq, -flag, -tlen,
          -subscore, -qual, -score) %>%
   separate(gene, sep = "\\*", into = c("gene", "allele")) %>%
   mutate(major = str_sub(gene, 4, 4),
@@ -161,7 +138,11 @@ vdj_summary <- dedup_allele_df %>%
   group_by(rname) %>%
   summarize(nV = sum(major == "V"),
             nD = sum(major == "D"),
-            nJ = sum(major == "J"))
+            nJ = sum(major == "J"),
+            nC = sum(major == "C"))
+
+VJC_df <- vdj_summary %>%
+  filter(nV > 1, nJ > 1, nC > 1)
 
 hasJ_df <- dedup_allele_df %>%
   group_by(rname) %>%
@@ -169,6 +150,7 @@ hasJ_df <- dedup_allele_df %>%
   ## filter(rname %in% (vdj_summary %>% filter(nJ > 1) %>% pull(rname)))
 
 hasJ_df %>%
+  filter(rname %in% (VJC_df %>% pull(rname))) %>%
   mutate(revfrac = mean(is_reversed),
          revcat = case_when(revfrac > 0.95 ~ "reverse",
                             revfrac < 0.05 ~ "forward",

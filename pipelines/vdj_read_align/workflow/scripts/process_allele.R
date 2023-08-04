@@ -4,42 +4,19 @@ order_df <- read_tsv(
   snakemake@input[["order"]],
   col_types = "ci"
 ) %>%
-  rename(gene_pos = pos) %>%
-  filter(gene != "IGHD") %>%
-  filter(str_sub(gene, 4, 4) %in% c("V", "D", "J"))
-
+  rename(gene_pos = pos,
+         name = gene)
 
 headers_df <- read_tsv(
   snakemake@input[["headers"]],
-  col_names = c(
-    "accession",
-    "name",
-    "species",
-    "functionality",
-    "regiontype",
-    "pos",
-    "len",
-    "codonstart",
-    "nucaddstart",
-    "nucaddend",
-    "correction",
-    "numAA",
-    "numchars",
-    "partial",
-    "gene_revcomp"
-  ),
+  col_names = c("name", "allele", "functionality", "gene_orientation"),
   col_types = "c"
 ) %>%
-  select(-accession, -species, -pos, -len, -codonstart, -correction,
-         -numAA, -matches("nuc"), -partial, -numchars, -regiontype) %>%
-  mutate(gene = str_extract(name, "(.*)\\*.*", 1)) %>%
-  # TODO rather than an inner join, we might want to keep the names of any gene
-  # that didn't map for troubleshooting
-  inner_join(order_df, by = "gene") %>%
-  select(-gene) %>%
+  inner_join(order_df, by = "name") %>%
   filter(functionality != "ORF") %>%
   select(-functionality) %>%
-  mutate(gene_revcomp = !is.na(gene_revcomp))
+  mutate(gene_revcomp = gene_orientation == "-") %>%
+  select(-gene_orientation)
 
 tags_df <- read_lines(snakemake@input[["tags"]]) %>%
   tibble(tags = .) %>%

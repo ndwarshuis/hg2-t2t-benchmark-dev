@@ -1,4 +1,4 @@
-library(tidyverse)
+suppressMessages(library(tidyverse))
 
 flank_df <- readr::read_tsv(
   snakemake@input[[1]],
@@ -35,8 +35,8 @@ get_rss <- function(df, forward) {
     filter(qname == ifelse(forward, "heptamer", "nonamer")) %>%
     mutate(lower12 = pos + offset + 10,
            upper12 = pos + offset + 14,
-           lower23 = pos + offset + 21,
-           upper23 = pos + offset + 25) %>%
+           lower23 = pos + offset + 20,
+           upper23 = pos + offset + 26) %>%
     select(-qname)
   # grab all 3p motifs and relabel columns so they don't clash
   df3p <- flag_df %>%
@@ -72,9 +72,11 @@ get_rss(flank_df, TRUE) %>%
   bind_rows(get_rss(flank_df, FALSE)) %>%
   arrange(rname, pos) %>%
   rename("#rname" = rname,
-
          start = pos) %>%
+  # sam is 1-based, bed is 0-based :/
   mutate(name = if_else(is12, "RSS12", "RSS23"),
-         score = 1000 - edit * 200) %>%
+         score = 1000 - edit * 200,
+         start = start - 1,
+         end = end - 1) %>%
   relocate(`#rname`, start, end, name, score, strand, thickStart, thickEnd) %>%
   write_tsv(snakemake@output[[1]])
