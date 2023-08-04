@@ -9,14 +9,40 @@ BAMS = {
 IDS = list(map(str, [81, 82, 84, 85, 89]))
 
 REGIONS = {
-    "IGK": "chr2",
-    "TRG": "chr7:0-100000000",
-    "TRB": "chr7:100000000",
-    "TRA": "chr14:0-80000000",
-    "IGH": "chr14:80000000",
-    "IGL": "chr22",
+    "IGK": ("chr2", {"IGKC": 3514}),
+    "TRG": ("chr7:0-100000000", {"TRGC1": 6966, "TRGGC2": 6967}),
+    "TRB": ("chr7:100000000", {"TRBC1": 28639, "TRBC2": 28638}),
+    "TRA": ("chr14:0-80000000", {"TRAC": 28755, "TRDC": 28526}),
+    "IGH": (
+        "chr14:80000000",
+        {
+            "IGHCA1": 3493,
+            "IGHCA2": 3494,
+            "IGHCD": 3495,
+            "IGHCE": 3497,
+            "IGHCEP1": 3498,
+            "IGHCEP2": 3499,
+            "IGHCG1": 3500,
+            "IGHCG2": 3501,
+            "IGHCG3": 3502,
+            "IGHCG4": 3503,
+            "IGHCGP": 3505,
+            "IGHCM": 3507,
+        },
+    ),
+    "IGL": (
+        "chr22",
+        {
+            "IGLC1": 3537,
+            "IGLC2": 3538,
+            "IGLC3": 3539,
+            "IGLC4": 3540,
+            "IGLC5": 3541,
+            "IGLC6": 3542,
+            "IGLC7": 28834,
+        },
+    ),
 }
-
 
 # wildcard_constraints:
 #     gene=f"({'|'.join(GENES)})",
@@ -43,11 +69,33 @@ rule intersect_bam:
         """
 
 
-# extra grep -v is to remove a few duplicates that would make downstream steps
-# choke
+rule download_constants:
+    output:
+        "resources/{locus}_constants.fa",
+    conda:
+        "envs/master.yml"
+    params:
+        tempfile=lambda w: f"/tmp/gene_{w.locus}.zip",
+        gene_ids=lambda w: " ".join([str(i) for i in REGIONS[w.locus][1].values()]),
+    shell:
+        """
+        datasets download gene gene-id \
+        --no-progressbar --include gene --filename {params.tempfile} \
+        {params.gene_ids} && \
+
+        unzip -p {params.tempfile} ncbi_dataset/data/gene.fna | \
+        seqkit grep -r -n -p 'NC_0000.*' | \
+        sed 's/>[^ ]\+ \([^ ]\+\) .*/>\\1*01/' | \
+        sed 's/>IGH/>IGHC/' \
+        > {output} && \
+
+        rm -rf {params.tempfile}
+        """
+
+
 rule download_imgt_goodies:
     output:
-        "resources/imgt_human.fa",
+        "resources/imgt_human_vdj.fa",
     params:
         url=IMGT_URL,
     conda:
@@ -55,9 +103,7 @@ rule download_imgt_goodies:
     shell:
         """
         curl -SsLq --fail {params.url} | \
-        seqkit grep -r -n -p '^[A-Z0-9]+\|(TRA|TRB|TRG|TRD|IGH|IGK|IGL).*\|Homo sapiens\|.*' | \
-        seqkit grep -v -r -n -p '^K01308\|IGHM\*02\|.*CH2.*$' | \
-        seqkit grep -v -r -n -p '^K01309\|IGHM\*02\|.*CH3.*$' \
+        seqkit grep -r -n -p '^.*\|Homo sapiens\|.*\|(V|D|J)-REGION\|.*' \
         > {output}
         """
 
@@ -66,24 +112,21 @@ rule split_igmt_goodies:
     input:
         rules.download_imgt_goodies.output,
     output:
-        fa="results/igmt/{locus}.fa",
-        header="results/igmt/{locus}_headers.fa",
+        fa="results/igmt/{locus}_vdj.fa",
+        header="results/igmt/{locus}_vdj_headers.fa",
     script:
         "scripts/split_igmt_db.py"
 
 
-rule parse_igmt_headers:
+rule cat_vdj_constant:
     input:
-        rules.download_imgt_goodies.output,
+        rules.split_igmt_goodies.output.fa,
+        rules.download_constants.output,
     output:
-        "results/igmt/headers.tsv",
+        "results/igmt/{locus}_all.fa",
     shell:
         """
-        cat {input} | \
-        grep '>' | \
-        sed 's/>//' | \
-        sed 's/|$//' |
-        sed 's/|/\t/g' > {output}
+        cat {input} > {output}
         """
 
 
@@ -107,7 +150,7 @@ rule split_bam:
     output:
         ALIGN_PATH / "split" / "{locus}.fastq",
     params:
-        region=lambda w: REGIONS[w.locus],
+        region=lambda w: REGIONS[w.locus][0],
     conda:
         "envs/master.yml"
     log:
@@ -122,7 +165,7 @@ rule split_bam:
 rule split_fastq:
     input:
         bam=rules.split_bam.output[0],
-        alleles=rules.split_igmt_goodies.output.fa,
+        alleles=rules.cat_vdj_constant.output[0],
         motifs="static/flank.fa",
     output:
         fasta=directory(ALIGN_PATH / "split" / "{locus}" / "fasta"),
@@ -143,7 +186,7 @@ rule split_fastq:
 
 rule sort_alleles:
     input:
-        rules.split_fastq.output.allele_merged
+        rules.split_fastq.output.allele_merged,
     output:
         ALIGN_PATH / "split" / "{locus}" / "final" / "allele_sorted.bam",
     conda:
@@ -156,9 +199,9 @@ rule sort_alleles:
 
 rule index_alleles:
     input:
-        rules.sort_alleles.output
+        rules.sort_alleles.output,
     output:
-        rules.sort_alleles.output[0] + ".bai"
+        rules.sort_alleles.output[0] + ".bai",
     conda:
         "envs/master.yml"
     shell:
@@ -169,7 +212,7 @@ rule index_alleles:
 
 rule cat_fasta:
     input:
-        rules.split_fastq.output.fasta
+        rules.split_fastq.output.fasta,
     output:
         ALIGN_PATH / "split" / "{locus}" / "all_reads.fa",
     shell:
@@ -236,7 +279,10 @@ rule write_rss_bed:
 rule all:
     input:
         expand(
-            rules.write_alleles_bed.output + rules.write_rss_bed.output + rules.cat_fasta.output + rules.index_alleles.output,
+            rules.write_alleles_bed.output
+            + rules.write_rss_bed.output
+            + rules.cat_fasta.output
+            + rules.index_alleles.output,
             locus=REGIONS,
             bamid=["ont"],
         ),

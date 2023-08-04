@@ -6,11 +6,24 @@ order_df <- read_tsv(
 ) %>%
   rename(gene_pos = pos)
 
+constants <- c(
+  paste0("IGHC", c(paste0("G", c(1:4, "P")), "E", "M", "D", "A1", "A2", "EP1", "EP2")),
+  "IGKC",
+  paste0("IGLC", 1:7),
+  "TRAC",
+  "TRDC",
+  "TRBC1",
+  "TRBC2",
+  "TRGC1",
+  "TRGC2"
+) %>% tibble(gene = ., allele = "01", functionality = "", gene_orientation = "+")
+
 headers_df <- read_tsv(
-  "../../results/igmt/IGH_headers.fa",
+  "../../results/igmt/IGH_vdj_headers.fa",
   col_names = c("gene", "allele", "functionality", "gene_orientation"),
   col_types = "c"
 ) %>%
+  bind_rows(constants) %>%
   inner_join(order_df, by = "gene") %>%
   filter(functionality != "ORF") %>%
   select(-functionality) %>%

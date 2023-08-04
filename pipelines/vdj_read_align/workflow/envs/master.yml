@@ -6,3 +6,5 @@ dependencies:
   - bwa
   - seqkit
   - bowtie
+  - ncbi-datasets-cli
+  
