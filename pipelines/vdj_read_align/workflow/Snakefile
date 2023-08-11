@@ -114,6 +114,8 @@ rule split_igmt_goodies:
     output:
         fa="results/igmt/{locus}_vdj.fa",
         header="results/igmt/{locus}_vdj_headers.fa",
+    conda:
+        "envs/biopython.yml"
     script:
         "scripts/split_igmt_db.py"
 
@@ -162,6 +164,19 @@ rule split_bam:
         """
 
 
+rule index_read_fastq:
+    input:
+        rules.split_bam.output,
+    output:
+        rules.split_bam.output[0] + ".fai",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools faidx {input}
+        """
+
+
 rule split_fastq:
     input:
         bam=rules.split_bam.output[0],
@@ -193,7 +208,7 @@ rule sort_alleles:
         "envs/master.yml"
     shell:
         """
-        samtools sort {input} | samtools view -q 30 -b > {output}
+        samtools sort {input} | samtools view -q 10 -b > {output}
         """
 
 
@@ -251,14 +266,17 @@ rule cat_motifs:
         """
 
 
-rule write_alleles_bed:
+rule write_alleles_tsv:
     input:
         tags=rules.cat_alleles.output.tags,
         sam=rules.cat_alleles.output.sam,
         headers=rules.split_igmt_goodies.output.header,
+        reads=rules.index_read_fastq.output,
         order="static/gene_order.tsv",
     output:
-        ALIGN_PATH / "split" / "{locus}" / "final" / "allele.bed",
+        tsv=ALIGN_PATH / "split" / "{locus}" / "final" / "allele.tsv",
+        tiling=ALIGN_PATH / "split" / "{locus}" / "final" / "tiling.pdf",
+        profile=ALIGN_PATH / "split" / "{locus}" / "final" / "profile.pdf",
     conda:
         "envs/tidy.yml"
     script:
@@ -279,10 +297,11 @@ rule write_rss_bed:
 rule all:
     input:
         expand(
-            rules.write_alleles_bed.output
+            rules.write_alleles_tsv.output
             + rules.write_rss_bed.output
             + rules.cat_fasta.output
-            + rules.index_alleles.output,
+            + rules.index_alleles.output
+            + rules.index_read_fastq.output,
             locus=REGIONS,
             bamid=["ont"],
         ),

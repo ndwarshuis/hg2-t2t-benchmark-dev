@@ -1,0 +1,10 @@
+name: vdj-read-align-biopython
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - biopython
+  - mypy
+  - flake8
+  - black
+  - snakefmt

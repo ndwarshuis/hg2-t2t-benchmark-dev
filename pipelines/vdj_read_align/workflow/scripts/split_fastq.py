@@ -51,7 +51,7 @@ def index_align(ps: Paths, i: int) -> None:
         )
     with open(allele_path, "wb") as fo, open(ps.allele_align_log, "w") as fa:
         mem = sp.Popen(
-            ["bwa", "mem", "-a", fasta_path, ps.alleles_in],
+            ["bwa", "mem", "-k", "14", "-a", "-T", "10", fasta_path, ps.alleles_in],
             stderr=fa,
             stdout=sp.PIPE,
         )
