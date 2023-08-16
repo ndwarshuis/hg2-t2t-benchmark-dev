@@ -3,6 +3,7 @@ suppressMessages(library(tidyverse))
 CONSTANTS <- c(
   paste0("IGHC", c(paste0("G", c(1:4, "P")), "E", "M", "D", "A1", "A2", "EP1", "EP2")),
   "IGKC",
+  "IGKCDEL",
   paste0("IGLC", 1:7),
   "TRAC",
   "TRDC",
@@ -97,11 +98,13 @@ df <- sam_df %>%
          rss = if_else(major == "C", TRUE, str_detect(gene, "-RSS")),
          gene = if_else(major == "C", gene, str_extract(gene, "(.*)-(-no)?RSS", 1))) %>%
   # get rid of stuff we probably don't care about
-  filter(mapq > 30) %>%
-  filter((major == "V" & scorefrac > 0.9)
-         | (major == "D" & scorefrac > 0.65)
-         | (major == "J" & scorefrac > 0.75)
-         | (major == "C" & scorefrac > 0.5)
+  filter((major == "D" & mapq > 10)
+         | (major != "D" & mapq > 30)) %>%
+  filter((major == "V" & scorefrac > 0.85)
+         | (major == "D" & scorefrac > 0.55)
+         | (major == "J" & scorefrac > 0.5)
+         | (major == "C" & minor != "DEL" & scorefrac > 0.5)
+         | (major == "C" & minor == "DEL" & scorefrac > 0.3)
          ) %>%
   left_join(headers_df, by = c("gene", "allele")) %>%
   select(-gene) %>%
@@ -155,7 +158,8 @@ dedup_df <- df %>%
          nC = sum(major == "C")) %>%
   filter(n() > 2) %>%
   ungroup() %>%
-  select(-rss)
+  select(-rss) %>%
+  mutate(minor = str_replace(minor, "-RSS", ""))
 
 dedup_df %>%
   group_by(rname) %>%

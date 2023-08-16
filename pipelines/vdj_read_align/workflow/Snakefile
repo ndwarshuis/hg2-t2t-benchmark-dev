@@ -9,7 +9,7 @@ BAMS = {
 IDS = list(map(str, [81, 82, 84, 85, 89]))
 
 REGIONS = {
-    "IGK": ("chr2", {"IGKC": 3514}),
+    "IGK": ("chr2", {"IGKC": 3514, "IGKCDEL": 3515}),
     "TRG": ("chr7:0-100000000", {"TRGC1": 6966, "TRGGC2": 6967}),
     "TRB": ("chr7:100000000", {"TRBC1": 28639, "TRBC2": 28638}),
     "TRA": ("chr14:0-80000000", {"TRAC": 28755, "TRDC": 28526}),
@@ -86,7 +86,8 @@ rule download_constants:
         unzip -p {params.tempfile} ncbi_dataset/data/gene.fna | \
         seqkit grep -r -n -p 'NC_0000.*' | \
         sed 's/>[^ ]\+ \([^ ]\+\) .*/>\\1*01/' | \
-        sed 's/>IGH/>IGHC/' \
+        sed 's/>IGH/>IGHC/' | \
+        sed 's/>IGKDEL/>IGKCDEL/' \
         > {output} && \
 
         rm -rf {params.tempfile}
