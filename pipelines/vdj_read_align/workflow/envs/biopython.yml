@@ -8,3 +8,8 @@ dependencies:
   - flake8
   - black
   - snakefmt
+  - ipython
+  - pip
+  - pandas
+  - pip:
+      - pylcs

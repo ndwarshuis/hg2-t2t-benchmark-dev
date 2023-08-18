@@ -68,3 +68,10 @@ vjc_df %>%
   group_by(vdjc_combo) %>%
   tally()
 # only one recombination: V6-1_D3-22_J3_CM
+
+df %>%
+  filter(minor == "3-60" | minor == "(III)-38-1") %>%
+  pivot_wider(id_cols = rname, values_from = pos, names_from = minor) %>%
+  mutate(diff = `(III)-38-1` - `3-60`) %>%
+  ggplot(aes(diff)) +
+  geom_histogram()

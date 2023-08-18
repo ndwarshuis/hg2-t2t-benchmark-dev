@@ -1,5 +1,7 @@
 suppressMessages(library(tidyverse))
 
+BLACKLIST <- c("IGHV(II)-30-21-RSS*01")
+
 CONSTANTS <- c(
   paste0("IGHC", c(paste0("G", c(1:4, "P")), "E", "M", "D", "A1", "A2", "EP1", "EP2")),
   "IGKC",
@@ -31,6 +33,13 @@ order_df <- read_tsv(
   col_types = "ci"
 ) %>%
   rename(gene_pos = pos)
+
+dups_df <- read_tsv(
+  snakemake@input[["dups"]],
+  col_types = "icc"
+) %>%
+  select(new, old) %>%
+  rename(gene = old, new_gene = new)
 
 headers_df <- read_tsv(
   snakemake@input[["headers"]],
@@ -87,11 +96,17 @@ sam_df <- readr::read_tsv(
 
 df <- sam_df %>%
   left_join(reads_df, by = "rname") %>%
-  mutate(revcomp = (flag %% 32) %/% 16 == 1,
+  mutate(is_reversed = (flag %% 32) %/% 16 == 1,
          seqlen = str_length(seq),
          end = map2_dbl(pos + seqlen, rlen, min),
          scorefrac = score / seqlen) %>%
   select(-cigar, -rnext, -pnext, -seq, -flag, -tlen, -qual, -score) %>%
+  # remove duplicate genes
+  left_join(dups_df, by = "gene") %>%
+  mutate(gene = if_else(is.na(new_gene), gene, new_gene)) %>%
+  select(-new_gene) %>%
+  # remove blacklisted genes
+  ## filter(!gene %in% BLACKLIST) %>%
   separate(gene, sep = "\\*", into = c("gene", "allele")) %>%
   mutate(major = str_sub(gene, 4, 4),
          minor = str_sub(gene, 5),
@@ -108,18 +123,20 @@ df <- sam_df %>%
          ) %>%
   left_join(headers_df, by = c("gene", "allele")) %>%
   select(-gene) %>%
-  mutate(is_reversed = gene_revcomp != revcomp) %>%
-  select(-matches("revcomp")) %>%
+  ## mutate(is_reversed = gene_revcomp != revcomp) %>%
+  ## select(-matches("revcomp")) %>%
   # filter out genes that don't have a known order (not as useful)
   filter(!is.na(gene_pos)) %>%
   relocate(rname, pos, end) %>%
   # put all reads in the same orientation
   group_by(rname) %>%
   mutate(revfrac = mean(is_reversed),
-         revcat = case_when(revfrac > 0.95 ~ "reverse",
-                            revfrac < 0.05 ~ "forward",
+         revcat = case_when(revfrac > 0.90 ~ "reverse",
+                            revfrac < 0.10 ~ "forward",
                             TRUE ~ "both")) %>%
   filter(revcat != "both") %>%
+  filter((revcat == "forward" & !is_reversed)
+         | (revcat == "reverse" & is_reversed)) %>%
   mutate(.pos = if_else(revcat == "reverse", rlen - end + 1, pos),
          .end = if_else(revcat == "reverse", rlen - pos + 1, end),
          pos = .pos,
@@ -141,7 +158,7 @@ df <- sam_df %>%
 dedup_df <- df %>%
   filter(rss) %>%
   # if there are dup alleles, only keep ones with highest score
-  group_by(major, minor, allele, rname) %>%
+  group_by(major, minor, rname) %>%
   filter(max(scorefrac) == scorefrac) %>%
   ungroup() %>%
   # for locations that have multiple genes, choose the one with highest score,
@@ -178,3 +195,14 @@ ggsave(snakemake@output[["tiling"]])
 
 dedup_df %>%
   write_tsv(snakemake@output[["tsv"]])
+
+dedup_df %>%
+  mutate(.pos = if_else(revcat == "reverse", rlen - end + 1, pos),
+         .end = if_else(revcat == "reverse", rlen - pos + 1, end),
+         pos = .pos,
+         end = .end,
+         name = sprintf("%s%s*%s", major, minor, allele),
+         score = scorefrac * 1000,
+         strand = if_else(is_reversed, "-", "+")) %>%
+  select(rname, pos, end, name, score, strand) %>%
+  write_tsv(snakemake@output[["bed"]], col_names = FALSE)

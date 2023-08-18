@@ -109,28 +109,53 @@ rule download_imgt_goodies:
         """
 
 
-rule split_igmt_goodies:
+rule split_imgt_goodies:
     input:
         rules.download_imgt_goodies.output,
     output:
-        fa="results/igmt/{locus}_vdj.fa",
-        header="results/igmt/{locus}_vdj_headers.fa",
+        fa="results/imgt/{locus}_vdj.fa",
+        header="results/imgt/{locus}_vdj_headers.fa",
     conda:
         "envs/biopython.yml"
     script:
-        "scripts/split_igmt_db.py"
+        "scripts/split_imgt_db.py"
 
 
 rule cat_vdj_constant:
     input:
-        rules.split_igmt_goodies.output.fa,
+        rules.split_imgt_goodies.output.fa,
         rules.download_constants.output,
     output:
-        "results/igmt/{locus}_all.fa",
+        "results/imgt/{locus}_all.fa",
     shell:
         """
         cat {input} > {output}
         """
+
+
+rule get_gene_distances:
+    input:
+        rules.cat_vdj_constant.output,
+    output:
+        "results/imgt/{locus}_distances.tsv",
+    conda:
+        "envs/biopython.yml"
+    threads: 8
+    script:
+        "scripts/diffseq.py"
+
+
+rule get_gene_dups:
+    input:
+        distances=rules.get_gene_distances.output,
+        order="static/gene_order.tsv",
+    output:
+        plot="results/imgt/{locus}_dups.pdf",
+        tsv="results/imgt/{locus}_dups.tsv",
+    conda:
+        "envs/tidy.yml"
+    script:
+        "scripts/get_dups.R"
 
 
 rule index_bam:
@@ -193,7 +218,7 @@ rule split_fastq:
         motif_index="log/{bamid}/index/{locus}_motif.log",
         allele_align="log/{bamid}/align/{locus}_allele.log",
         motif_align="log/{bamid}/align/{locus}_motif.log",
-    threads: 10
+    threads: 8
     conda:
         "envs/master.yml"
     script:
@@ -269,13 +294,15 @@ rule cat_motifs:
 
 rule write_alleles_tsv:
     input:
+        dups=rules.get_gene_dups.output.tsv,
         tags=rules.cat_alleles.output.tags,
         sam=rules.cat_alleles.output.sam,
-        headers=rules.split_igmt_goodies.output.header,
+        headers=rules.split_imgt_goodies.output.header,
         reads=rules.index_read_fastq.output,
         order="static/gene_order.tsv",
     output:
         tsv=ALIGN_PATH / "split" / "{locus}" / "final" / "allele.tsv",
+        bed=ALIGN_PATH / "split" / "{locus}" / "final" / "allele.bed",
         tiling=ALIGN_PATH / "split" / "{locus}" / "final" / "tiling.pdf",
         profile=ALIGN_PATH / "split" / "{locus}" / "final" / "profile.pdf",
     conda:

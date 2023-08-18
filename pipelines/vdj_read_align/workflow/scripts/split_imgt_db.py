@@ -52,8 +52,8 @@ def get_rss(orientation, onleft) -> tuple[str, str]:
         # return ("GGTTTTTGT", "CACTGTG") if onleft else ("CACAGTG", "ACAAAAACC")
         return "CACTGTG" if onleft else "CACAGTG"
     else:
-        # return ("CCAAAAACA", "GTGACAC") if onleft else ("GTGTCAC", "TGTTTTTGG")
-        return "GTGACAC" if onleft else "GTGTCAC"
+        # return ("ACAAAAACC", "ACAGTGT") if onleft else ("ACACTGT", "GGTTTTTGT")
+        return "ACAGTGT" if onleft else "ACACTGT"
 
 
 def add_seq_rss(seq, gene, orientation):
