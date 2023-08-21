@@ -193,6 +193,32 @@ dedup_df %>%
   labs(x = "gene rank", y = "read", fill = "region type")
 ggsave(snakemake@output[["tiling"]])
 
+vaf_df <- dedup_df %>%
+  filter(major != "C") %>%
+  mutate(gene = sprintf("%s%s", major, minor)) %>%
+  group_by(gene, allele) %>%
+  mutate(atot = n()) %>%
+  group_by(gene) %>%
+  mutate(vaf = atot / n()) %>%
+  ungroup() %>%
+  select(gene, allele, vaf) %>%
+  arrange(gene, allele) %>%
+  unique()
+
+dedup_df %>%
+  filter(major != "C") %>%
+  mutate(gene = sprintf("%s%s", major, minor)) %>%
+  select(rname, gene, gene_pos, allele) %>%
+  left_join(vaf_df, by = c("gene", "allele")) %>%
+  group_by(gene) %>%
+  mutate(allele = as.integer(fct_reorder(factor(allele), vaf, .desc = TRUE))) %>%
+  ungroup() %>%
+  ggplot(aes(gene_pos, fct_reorder(rname, gene_pos), fill = factor(allele))) +
+  geom_tile() +
+  theme(axis.text.y = element_blank()) +
+  labs(x = "gene rank", y = "read", fill = "allele index")
+ggsave(snakemake@output[["tiling_allele"]])
+
 dedup_df %>%
   write_tsv(snakemake@output[["tsv"]])
 

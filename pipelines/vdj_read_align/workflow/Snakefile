@@ -304,6 +304,7 @@ rule write_alleles_tsv:
         tsv=ALIGN_PATH / "split" / "{locus}" / "final" / "allele.tsv",
         bed=ALIGN_PATH / "split" / "{locus}" / "final" / "allele.bed",
         tiling=ALIGN_PATH / "split" / "{locus}" / "final" / "tiling.pdf",
+        tiling_allele=ALIGN_PATH / "split" / "{locus}" / "final" / "tiling_allele.pdf",
         profile=ALIGN_PATH / "split" / "{locus}" / "final" / "profile.pdf",
     conda:
         "envs/tidy.yml"
