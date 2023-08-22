@@ -77,7 +77,7 @@ def main(smk):
     loci = ["TRA", "TRD"] if locus == "TRA" else [locus]
     with open(smk.input[0], "r") as fi, open(smk.output["fa"], "w") as fo, open(
         smk.output["header"], "w"
-    ) as ho:
+    ) as ho, open(smk.output["fa_norss"], "w") as fo_norss:
         for r in F.FastaIterator(fi):
             hs = r.description.strip().split("|")
             gene, allele = hs[1].split("*")
@@ -88,9 +88,9 @@ def main(smk):
             seq = str(r.seq)
             if this_locus in loci:
                 ho.write("\t".join([gene, allele, function, orientation]) + "\n")
-                fo.write(f">{gene}-noRSS*{allele}\n")
-                fo.write(seq + "\n")
-                fo.write(f">{gene}-RSS*{allele}\n")
+                fo_norss.write(f">{gene}*{allele}\n")
+                fo_norss.write(seq + "\n")
+                fo.write(f">{gene}*{allele}\n")
                 fo.write(add_seq_rss(seq, gene, orientation) + "\n")
 
 

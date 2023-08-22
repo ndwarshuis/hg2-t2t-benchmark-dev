@@ -9,12 +9,12 @@ Paths = namedtuple(
     "Paths",
     [
         "alleles_in",
-        "motifs_in",
+        # "motifs_in",
         "bam_in",
         "allele_index_log",
-        "motif_index_log",
+        # "motif_index_log",
         "allele_align_log",
-        "motif_align_log",
+        # "motif_align_log",
         "fa_out",
         "sam_out",
     ],
@@ -43,12 +43,12 @@ def index_align(ps: Paths, i: int) -> None:
             stderr=f,
             check=True,
         )
-    with open(ps.motif_index_log, "w") as f:
-        sp.run(
-            ["bowtie-build", "-q", fasta_path, fasta_path],
-            stderr=f,
-            check=True,
-        )
+    # with open(ps.motif_index_log, "w") as f:
+    #     sp.run(
+    #         ["bowtie-build", "-q", fasta_path, fasta_path],
+    #         stderr=f,
+    #         check=True,
+    # )
     with open(allele_path, "wb") as fo, open(ps.allele_align_log, "w") as fa:
         mem = sp.Popen(
             ["bwa", "mem", "-k", "14", "-a", "-T", "10", fasta_path, ps.alleles_in],
@@ -64,21 +64,21 @@ def index_align(ps: Paths, i: int) -> None:
         mem.wait()
         if mem.returncode != 0:
             exit(1)
-    with open(rss_path, "wb") as fo, open(ps.motif_align_log, "w") as fa:
-        bowtie = sp.Popen(
-            ["bowtie", "-a", "-x", fasta_path, "-f", ps.motifs_in, "-S"],
-            stderr=fa,
-            stdout=sp.PIPE,
-        )
-        sp.run(
-            ["samtools", "view", "-b"],
-            stdin=bowtie.stdout,
-            stdout=fo,
-            check=True,
-        )
-        mem.wait()
-        if mem.returncode != 0:
-            exit(1)
+    # with open(rss_path, "wb") as fo, open(ps.motif_align_log, "w") as fa:
+    #     bowtie = sp.Popen(
+    #         ["bowtie", "-a", "-x", fasta_path, "-f", ps.motifs_in, "-S"],
+    #         stderr=fa,
+    #         stdout=sp.PIPE,
+    #     )
+    #     sp.run(
+    #         ["samtools", "view", "-b"],
+    #         stdin=bowtie.stdout,
+    #         stdout=fo,
+    #         check=True,
+    #     )
+    #     mem.wait()
+    #     if mem.returncode != 0:
+    #         exit(1)
 
 
 def chunky_list(n, xs):
@@ -92,17 +92,17 @@ def merge_bam(bams: list[Path], out):
 def main(smk):
     ps = Paths(
         alleles_in=Path(smk.input["alleles"]),
-        motifs_in=Path(smk.input["motifs"]),
+        # motifs_in=Path(smk.input["motifs"]),
         bam_in=Path(smk.input["bam"]),
         allele_index_log=Path(smk.log["allele_index"]),
-        motif_index_log=Path(smk.log["motif_index"]),
+        # motif_index_log=Path(smk.log["motif_index"]),
         allele_align_log=Path(smk.log["allele_align"]),
-        motif_align_log=Path(smk.log["motif_align"]),
+        # motif_align_log=Path(smk.log["motif_align"]),
         fa_out=Path(smk.output["fasta"]),
         sam_out=Path(smk.output["sam"]),
     )
     alleles_merged_out = Path(smk.output["allele_merged"])
-    motifs_merged_out = Path(smk.output["motif_merged"])
+    # motifs_merged_out = Path(smk.output["motif_merged"])
 
     n = 0
     for p in [ps.fa_out, ps.sam_out]:
@@ -134,7 +134,7 @@ def main(smk):
                     t.close()
 
     merge_output(alleles_merged_out, [bam_name(ps, i, False) for i in range(n)])
-    merge_output(motifs_merged_out, [bam_name(ps, i, True) for i in range(n)])
+    # merge_output(motifs_merged_out, [bam_name(ps, i, True) for i in range(n)])
 
 
 main(snakemake)  # noqa: F821

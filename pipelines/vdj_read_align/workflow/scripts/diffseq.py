@@ -5,11 +5,7 @@ from multiprocessing import Pool
 
 
 with open(snakemake.input[0], "r") as f:
-    d = {
-        r.name.replace("-noRSS", ""): str(r.seq)
-        for r in F.FastaIterator(f)
-        if "noRSS" in r.name
-    }
+    d = {r.name: str(r.seq) for r in F.FastaIterator(f)}
 
 
 def edit_distance(s1, s2):

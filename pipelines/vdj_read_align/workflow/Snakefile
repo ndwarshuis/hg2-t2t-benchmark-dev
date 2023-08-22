@@ -114,6 +114,7 @@ rule split_imgt_goodies:
         rules.download_imgt_goodies.output,
     output:
         fa="results/imgt/{locus}_vdj.fa",
+        fa_norss="results/imgt/{locus}_vdj_norss.fa",
         header="results/imgt/{locus}_vdj_headers.fa",
     conda:
         "envs/biopython.yml"
@@ -132,10 +133,21 @@ rule cat_vdj_constant:
         cat {input} > {output}
         """
 
+rule cat_vdj_constant_norss:
+    input:
+        rules.split_imgt_goodies.output.fa_norss,
+        rules.download_constants.output,
+    output:
+        "results/imgt/{locus}_all_norss.fa",
+    shell:
+        """
+        cat {input} > {output}
+        """
+
 
 rule get_gene_distances:
     input:
-        rules.cat_vdj_constant.output,
+        rules.cat_vdj_constant_norss.output,
     output:
         "results/imgt/{locus}_distances.tsv",
     conda:
@@ -207,17 +219,17 @@ rule split_fastq:
     input:
         bam=rules.split_bam.output[0],
         alleles=rules.cat_vdj_constant.output[0],
-        motifs="static/flank.fa",
+        # motifs="static/flank.fa",
     output:
         fasta=directory(ALIGN_PATH / "split" / "{locus}" / "fasta"),
         sam=directory(ALIGN_PATH / "split" / "{locus}" / "aligned"),
         allele_merged=ALIGN_PATH / "split" / "{locus}" / "allele_merged.bam",
-        motif_merged=ALIGN_PATH / "split" / "{locus}" / "motif_merged.bam",
+        # motif_merged=ALIGN_PATH / "split" / "{locus}" / "motif_merged.bam",
     log:
         allele_index="log/{bamid}/index/{locus}_allele.log",
-        motif_index="log/{bamid}/index/{locus}_motif.log",
+        # motif_index="log/{bamid}/index/{locus}_motif.log",
         allele_align="log/{bamid}/align/{locus}_allele.log",
-        motif_align="log/{bamid}/align/{locus}_motif.log",
+        # motif_align="log/{bamid}/align/{locus}_motif.log",
     threads: 8
     conda:
         "envs/master.yml"
@@ -279,17 +291,17 @@ rule cat_alleles:
         """
 
 
-rule cat_motifs:
-    input:
-        rules.split_fastq.output.motif_merged,
-    output:
-        ALIGN_PATH / "split" / "{locus}" / "all_motif.sam",
-    conda:
-        "envs/master.yml"
-    shell:
-        """
-        samtools view {input} | grep -v '^@' > {output}
-        """
+# rule cat_motifs:
+#     input:
+#         rules.split_fastq.output.motif_merged,
+#     output:
+#         ALIGN_PATH / "split" / "{locus}" / "all_motif.sam",
+#     conda:
+#         "envs/master.yml"
+#     shell:
+#         """
+#         samtools view {input} | grep -v '^@' > {output}
+#         """
 
 
 rule write_alleles_tsv:
@@ -312,25 +324,25 @@ rule write_alleles_tsv:
         "scripts/process_allele.R"
 
 
-rule write_rss_bed:
-    input:
-        rules.cat_motifs.output,
-    output:
-        ALIGN_PATH / "split" / "{locus}" / "final" / "rss.bed",
-    conda:
-        "envs/tidy.yml"
-    script:
-        "scripts/process_rss.R"
+# rule write_rss_bed:
+#     input:
+#         rules.cat_motifs.output,
+#     output:
+#         ALIGN_PATH / "split" / "{locus}" / "final" / "rss.bed",
+#     conda:
+#         "envs/tidy.yml"
+#     script:
+#         "scripts/process_rss.R"
 
 
 rule all:
     input:
         expand(
             rules.write_alleles_tsv.output
-            + rules.write_rss_bed.output
+            # + rules.write_rss_bed.output
             + rules.cat_fasta.output
             + rules.index_alleles.output
             + rules.index_read_fastq.output,
             locus=REGIONS,
-            bamid=["ont"],
+            bamid=["ont", "hifi"],
         ),

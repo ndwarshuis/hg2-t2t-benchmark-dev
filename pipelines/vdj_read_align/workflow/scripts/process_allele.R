@@ -1,6 +1,6 @@
 suppressMessages(library(tidyverse))
 
-BLACKLIST <- c("IGHV(II)-30-21-RSS*01")
+## BLACKLIST <- c("IGHV(II)-30-21-RSS*01")
 
 CONSTANTS <- c(
   paste0("IGHC", c(paste0("G", c(1:4, "P")), "E", "M", "D", "A1", "A2", "EP1", "EP2")),
@@ -61,6 +61,8 @@ reads_df <- read_tsv(
   rename(rname = X1, rlen = X2) %>%
   mutate(rname = paste0("@", rname))
 
+is_hifi <- str_detect(snakemake@input[["tags"]], "hifi")
+
 tags_df <- read_lines(snakemake@input[["tags"]]) %>%
   tibble(tags = .) %>%
   mutate(id = row_number(),
@@ -94,30 +96,33 @@ sam_df <- readr::read_tsv(
 ) %>%
   bind_cols(tags_df)
 
+# TODO detect inversions here by figuring out if a backward V is within x bases
+# of a J
 df <- sam_df %>%
   left_join(reads_df, by = "rname") %>%
   mutate(is_reversed = (flag %% 32) %/% 16 == 1,
          seqlen = str_length(seq),
          end = map2_dbl(pos + seqlen, rlen, min),
-         scorefrac = score / seqlen) %>%
+         scorefrac = score / seqlen,
+         left_clip = as.integer(str_extract(cigar, "^([0-9]+)S.*", 1)),
+         right_clip = as.integer(str_extract(cigar, ".*[^0-9]([0-9]+)S$", 1))) %>%
+  replace_na(list(left_clip = 0, right_clip = 0)) %>%
   select(-cigar, -rnext, -pnext, -seq, -flag, -tlen, -qual, -score) %>%
   # remove duplicate genes
-  left_join(dups_df, by = "gene") %>%
-  mutate(gene = if_else(is.na(new_gene), gene, new_gene)) %>%
-  select(-new_gene) %>%
+  anti_join(dups_df, by = "gene") %>%
+  ## mutate(gene = if_else(is.na(new_gene), gene, new_gene)) %>%
+  ## select(-new_gene) %>%
   # remove blacklisted genes
   ## filter(!gene %in% BLACKLIST) %>%
   separate(gene, sep = "\\*", into = c("gene", "allele")) %>%
   mutate(major = str_sub(gene, 4, 4),
-         minor = str_sub(gene, 5),
-         rss = if_else(major == "C", TRUE, str_detect(gene, "-RSS")),
-         gene = if_else(major == "C", gene, str_extract(gene, "(.*)-(-no)?RSS", 1))) %>%
+         minor = str_sub(gene, 5)) %>%
   # get rid of stuff we probably don't care about
-  filter((major == "D" & mapq > 10)
-         | (major != "D" & mapq > 30)) %>%
-  filter((major == "V" & scorefrac > 0.85)
-         | (major == "D" & scorefrac > 0.55)
-         | (major == "J" & scorefrac > 0.5)
+  filter((major == "D" & ((mapq > 10 & !is_hifi) | (mapq > 30 & is_hifi)))
+         | (major != "D" & ((mapq > 30 & !is_hifi) | (mapq > 40 & is_hifi)))) %>%
+  filter((major == "V" & ((scorefrac > 0.85 & !is_hifi) | (scorefrac > 0.95 & is_hifi)))
+         | (major == "D" & ((scorefrac > 0.55) & !is_hifi) | (scorefrac > 0.85 & is_hifi))
+         | (major == "J" & ((scorefrac > 0.5) & !is_hifi) | (scorefrac > 0.80 & is_hifi))
          | (major == "C" & minor != "DEL" & scorefrac > 0.5)
          | (major == "C" & minor == "DEL" & scorefrac > 0.3)
          ) %>%
@@ -131,17 +136,22 @@ df <- sam_df %>%
   # put all reads in the same orientation
   group_by(rname) %>%
   mutate(revfrac = mean(is_reversed),
-         revcat = case_when(revfrac > 0.90 ~ "reverse",
-                            revfrac < 0.10 ~ "forward",
+         revcat = case_when(revfrac > 0.95 ~ "reverse",
+                            revfrac < 0.05 ~ "forward",
                             TRUE ~ "both")) %>%
   filter(revcat != "both") %>%
+  # get rid of genes oriented against the majority
   filter((revcat == "forward" & !is_reversed)
          | (revcat == "reverse" & is_reversed)) %>%
   mutate(.pos = if_else(revcat == "reverse", rlen - end + 1, pos),
          .end = if_else(revcat == "reverse", rlen - pos + 1, end),
+         .right_clip = if_else(revcat == "reverse", left_clip, right_clip),
+         .left_clip = if_else(revcat == "reverse", right_clip, left_clip),
+         right_clip = .right_clip,
+         left_clip = .left_clip,
          pos = .pos,
          end = .end) %>%
-  select(-.end, -.pos) %>%
+  select(-.end, -.pos, -.left_clip, -.right_clip) %>%
   # do cheap bedtools merge thing; for every overlapping region, keep the
   # start/end of the first/last region
   arrange(rname, pos, end) %>%
@@ -156,7 +166,7 @@ df <- sam_df %>%
   filter(str_sub(minor, 2, 2) != "D")
 
 dedup_df <- df %>%
-  filter(rss) %>%
+  ## filter(rss) %>%
   # if there are dup alleles, only keep ones with highest score
   group_by(major, minor, rname) %>%
   filter(max(scorefrac) == scorefrac) %>%
@@ -175,8 +185,14 @@ dedup_df <- df %>%
          nC = sum(major == "C")) %>%
   filter(n() > 2) %>%
   ungroup() %>%
-  select(-rss) %>%
-  mutate(minor = str_replace(minor, "-RSS", ""))
+  # remove genes that are out of order
+  arrange(rname, pos) %>%
+  group_by(rname) %>%
+  filter(gene_pos < lead(gene_pos, default = 10000)
+         & lag(gene_pos, default = -1) < gene_pos) %>%
+  ungroup()
+  ## select(-rss) %>%
+  ## mutate(minor = str_replace(minor, "-RSS", ""))
 
 dedup_df %>%
   group_by(rname) %>%
@@ -194,7 +210,6 @@ dedup_df %>%
 ggsave(snakemake@output[["tiling"]])
 
 vaf_df <- dedup_df %>%
-  filter(major != "C") %>%
   mutate(gene = sprintf("%s%s", major, minor)) %>%
   group_by(gene, allele) %>%
   mutate(atot = n()) %>%
@@ -205,11 +220,12 @@ vaf_df <- dedup_df %>%
   arrange(gene, allele) %>%
   unique()
 
-dedup_df %>%
-  filter(major != "C") %>%
+dedup_vaf_df <- dedup_df %>%
   mutate(gene = sprintf("%s%s", major, minor)) %>%
-  select(rname, gene, gene_pos, allele) %>%
-  left_join(vaf_df, by = c("gene", "allele")) %>%
+  left_join(vaf_df, by = c("gene", "allele"))
+
+dedup_vaf_df %>%
+  select(rname, gene, gene_pos, allele, vaf) %>%
   group_by(gene) %>%
   mutate(allele = as.integer(fct_reorder(factor(allele), vaf, .desc = TRUE))) %>%
   ungroup() %>%
@@ -219,14 +235,14 @@ dedup_df %>%
   labs(x = "gene rank", y = "read", fill = "allele index")
 ggsave(snakemake@output[["tiling_allele"]])
 
-dedup_df %>%
+dedup_vaf_df %>%
   write_tsv(snakemake@output[["tsv"]])
 
 dedup_df %>%
   mutate(.pos = if_else(revcat == "reverse", rlen - end + 1, pos),
          .end = if_else(revcat == "reverse", rlen - pos + 1, end),
-         pos = .pos,
-         end = .end,
+         pos = .pos - 1,
+         end = .end - 1,
          name = sprintf("%s%s*%s", major, minor, allele),
          score = scorefrac * 1000,
          strand = if_else(is_reversed, "-", "+")) %>%
