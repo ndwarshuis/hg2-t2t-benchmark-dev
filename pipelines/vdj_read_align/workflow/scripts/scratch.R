@@ -83,6 +83,7 @@ get_merge_end <- function(last, x) {
 df <- sam_df %>%
   left_join(reads_df, by = "rname") %>%
   mutate(is_reversed = (flag %% 32) %/% 16 == 1,
+         gene_index = as.integer(factor(gene)),
          seqlen = str_length(seq),
          end = map2_dbl(pos + seqlen, rlen, min),
          scorefrac = score / seqlen,
@@ -111,30 +112,32 @@ df <- sam_df %>%
   ## left_join(headers_df, by = c("gene", "allele")) %>%
   left_join(order_df, by = c("gene")) %>%
   select(-gene) %>%
-  ## mutate(is_reversed = gene_revcomp != revcomp) %>%
-  ## select(-matches("revcomp")) %>%
   # filter out genes that don't have a known order (not as useful)
   filter(!is.na(gene_pos)) %>%
   relocate(rname, pos, end) %>%
   # put all reads in the same orientation
   group_by(rname) %>%
   mutate(revfrac = mean(is_reversed),
-         revcat = case_when(revfrac > 0.95 ~ "reverse",
-                            revfrac < 0.05 ~ "forward",
-                            TRUE ~ "both")) %>%
-  filter(revcat != "both") %>%
-  # get rid of genes oriented against the majority
-  filter((revcat == "forward" & !is_reversed)
-         | (revcat == "reverse" & is_reversed)) %>%
-  mutate(.pos = if_else(revcat == "reverse", rlen - end + 1, pos),
-         .end = if_else(revcat == "reverse", rlen - pos + 1, end),
-         .right_clip = if_else(revcat == "reverse", left_clip, right_clip),
-         .left_clip = if_else(revcat == "reverse", right_clip, left_clip),
+         read_reversed = case_when(revfrac > 0.95 ~ TRUE,
+                                   revfrac < 0.05 ~ FALSE,
+                                   TRUE ~ NA)) %>%
+  mutate(.pos = if_else(read_reversed, rlen - end + 1, pos),
+         .end = if_else(read_reversed, rlen - pos + 1, end),
+         .right_clip = if_else(read_reversed, left_clip, right_clip),
+         .left_clip = if_else(read_reversed, right_clip, left_clip),
          right_clip = .right_clip,
          left_clip = .left_clip,
          pos = .pos,
          end = .end) %>%
-  select(-.end, -.pos, -.left_clip, -.right_clip) %>%
+  select(-.end, -.pos, -.left_clip, -.right_clip)
+  # remove duplicated genes in the IGK locus
+  ## filter(str_sub(minor, 2, 2) != "D")
+
+ambiguous_orientation <- df %>%
+  filter(is.na(pos))
+
+merged_df <- df %>%
+  filter(!is.na(pos)) %>%
   # do cheap bedtools merge thing; for every overlapping region, keep the
   # start/end of the first/last region
   arrange(rname, pos, end) %>%
@@ -144,73 +147,84 @@ df <- sam_df %>%
            map_dbl(~ .x[[1]])) %>%
   group_by(rname, merge_pos) %>%
   mutate(merge_end = max(end)) %>%
-  ungroup() %>%
-  # remove duplicated genes in the IGK locus
-  filter(str_sub(minor, 2, 2) != "D")
+  ungroup()
 
-gene_df <- df %>%
+gene_pos_df <- merged_df %>%
+  select(rname, merge_pos) %>%
+  unique() %>%
+  group_by(rname) %>%
+  mutate(pos_index = row_number())
+
+low_counts <- gene_pos_df %>%
+  group_by(rname) %>%
+  filter(n() < 3)
+
+gene_df <- merged_df %>%
+  anti_join(low_counts, by = "rname") %>%
   arrange(rname, merge_pos, gene_pos) %>%
   group_by(rname) %>%
-  mutate(gene = paste0(major, minor)) %>%
-  select(rname, merge_pos, gene_pos) %>%
-  unique()
+  left_join(gene_pos_df, by = c("rname", "merge_pos"))
+  ## select(rname, pos_index, major, minor, allele, gene_index, gene_pos, scorefrac) %>%
+  ## unique()
 
 optimize_order <- function(df) {
   xs <- df %>%
     group_by(pos_index) %>%
-    group_map(~ .x$gene_pos)
-  branches <- accumulate(xs, ~ .x * length(.y), .init = 1)[-1]
+    group_map(~ list(.y$pos_index[[1]], .x)) %>%
+    set_names(map(., ~ .x[[1]])) %>%
+    map(~ .x[[2]])
+  branches <- accumulate(xs, ~ .x * nrow(.y), .init = 1)[-1] %>%
+    as.vector()
   ngenes <- length(xs)
   ncombos <- last(branches)
-  paths <- xs %>%
-    map2(branches, ~ rep(.x, .y / length(.x), each = ncombos / .y)) %>%
-    flatten_dbl() %>%
-    matrix(nrow = ncombos)
-  dups <- apply(paths, 1, function(x) any(duplicated(x)))
-  unique_paths <- paths[!dups, ]
-  best_path <- if (is.null(dim(unique_paths))) {
-    unique_paths
-  } else {
-    ncombos_nodup <- nrow(unique_paths)
-    gaps <- (unique_paths[, -ncol(unique_paths)] - unique_paths[, -1]) %>%
-      abs() %>%
-      magrittr::add(-1) %>%
-      matrix(nrow = ncombos_nodup)
-    scores <- apply(gaps, 1, sum)
-    best_scores <- scores == min(scores)
-    best_paths <- unique_paths[best_scores, ] %>%
-      matrix(nrow = sum(best_scores))
-    best_paths[1, ]
+  get_combos <- function(k) {
+    xs %>%
+        map(~ as.vector(.x[[k]])) %>%
+        map2(branches, ~ rep(.x, .y / length(.x), each = ncombos / .y)) %>%
+        flatten_dbl() %>%
+        matrix(nrow = ncombos)
   }
-  tibble(gene_pos = best_path) %>%
+  paths <- get_combos("gene_pos")
+  dups <- apply(paths, 1, function(x) any(duplicated(x)))
+  ncombos_nodup <- sum(!dups)
+  unique_paths <- paths[!dups, ] %>%
+    matrix(nrow = ncombos_nodup)
+  aligns <- get_combos("scorefrac")[!dups, ] %>%
+    matrix(nrow = ncombos_nodup)
+  genes <- get_combos("gene_index")[!dups, ] %>%
+    matrix(nrow = ncombos_nodup)
+  gaps <- (unique_paths[, -ncol(unique_paths)] - unique_paths[, -1]) %>%
+    abs() %>%
+    magrittr::add(-1) %>%
+    matrix(nrow = ncombos_nodup)
+  gap_scores <- apply(gaps, 1, sum)
+  align_scores <- apply(1 - aligns, 1, sum)
+  scores <- gap_scores * 0.8 + align_scores * 0.2
+  best_combo <- detect_index(scores == min(scores), ~ .x == TRUE)
+  tibble(gene_index = genes[best_combo, ]) %>%
     mutate(pos_index = row_number())
 }
 
 optimal_gene_df <- gene_df %>%
-  select(rname, merge_pos) %>%
-  unique() %>%
-  group_by(rname) %>%
-  mutate(pos_index = row_number()) %>%
-  # remove reads with only 1 gene on them
-  filter(n() > 1) %>%
+  # get rid of genes oriented against the majority
+  filter(read_reversed == is_reversed) %>%
+  group_by(rname, pos_index, gene_pos) %>%
+  # for each gene at each location, only keep the highest scoring allele (this
+  # will greatly reduce the number of combinations I need to deal with)
+  filter(scorefrac == max(scorefrac)) %>%
+  ungroup() %>%
   ## filter(rname == "@0a1a25e5-0f65-4f42-9a0a-cb48382e3c84") %>%
-  left_join(gene_df, by = c("rname", "merge_pos")) %>%
-  select(-merge_pos) %>%
-  nest(reads = c(pos_index, gene_pos)) %>%
+  select(rname, pos_index, gene_pos, gene_index, scorefrac) %>%
+  nest(reads = c(pos_index, gene_pos, gene_index, scorefrac)) %>%
   mutate(reads = map(reads, optimize_order)) %>%
-  unnest(reads)
-  ## pull(reads) %>%
-  ## first() %>%
-  ## group_by(pos_index) %>%
-  ## group_map(~ .x$gene_pos)
-
-gene_df %>%
-  mutate(pos_index = as.integer(factor(merge_pos))) %>%
-  left_join(optimal_gene_df, by = c("rname", "gene_pos")) %>%
-  View()
+  unnest(reads) %>%
+  left_join(gene_df, by = c("rname", "gene_index", "pos_index")) %>%
+  relocate(rname, pos, end)
 
 optimal_gene_df %>%
-  select(pos_index, gene_pos)
+  ggplot(aes(pos, gene_pos, color = major, group = rname)) +
+  geom_point() +
+  geom_line()
 
 ## vaf_df <- df %>%
 ##   mutate(gene = sprintf("%s%s", major, minor)) %>%
