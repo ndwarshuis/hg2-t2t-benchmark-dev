@@ -3,7 +3,6 @@ library(tidyverse)
 order_df <- read_tsv("../../static/gene_order.tsv") %>%
   rename(gene_pos = pos)
 
-
 major_bounds <- order_df %>%
   mutate(major = str_sub(gene, 4, 4),
          locus = str_sub(gene, 1, 3)) %>%
@@ -102,7 +101,7 @@ df <- sam_df %>%
          minor = str_sub(gene, 5)) %>%
   # get rid of stuff we probably don't care about
   filter((major == "D" & ((mapq > 10 & !is_hifi) | (mapq > 30 & is_hifi)))
-         | (major != "D" & ((mapq > 30 & !is_hifi) | (mapq > 40 & is_hifi)))) %>%
+         | (major != "D" & ((mapq > 15 & !is_hifi) | (mapq > 40 & is_hifi)))) %>%
   filter((major == "V" & ((scorefrac > 0.85 & !is_hifi) | (scorefrac > 0.95 & is_hifi)))
          | (major == "D" & ((scorefrac > 0.55) & !is_hifi) | (scorefrac > 0.85 & is_hifi))
          | (major == "J" & ((scorefrac > 0.5) & !is_hifi) | (scorefrac > 0.80 & is_hifi))
@@ -199,10 +198,10 @@ optimize_order <- function(df) {
     matrix(nrow = ncombos_nodup)
   gap_scores <- apply(gaps, 1, sum)
   align_scores <- apply(1 - aligns, 1, sum)
-  scores <- gap_scores * 0.8 + align_scores * 0.2
+  scores <- gap_scores * 0.5 + align_scores * 0.5
   best_combo <- detect_index(scores == min(scores), ~ .x == TRUE)
   tibble(gene_index = genes[best_combo, ]) %>%
-    mutate(pos_index = row_number())
+    mutate(pos_index = as.integer(names(xs)))
 }
 
 optimal_gene_df <- gene_df %>%
@@ -213,7 +212,7 @@ optimal_gene_df <- gene_df %>%
   # will greatly reduce the number of combinations I need to deal with)
   filter(scorefrac == max(scorefrac)) %>%
   ungroup() %>%
-  ## filter(rname == "@0a1a25e5-0f65-4f42-9a0a-cb48382e3c84") %>%
+  ## filter(rname == "@665b90f0-8597-431d-b968-5687965c7be8") %>%
   select(rname, pos_index, gene_pos, gene_index, scorefrac) %>%
   nest(reads = c(pos_index, gene_pos, gene_index, scorefrac)) %>%
   mutate(reads = map(reads, optimize_order)) %>%
@@ -271,81 +270,81 @@ optimal_gene_df %>%
 ##   geom_col(position = "stack") +
 ##   facet_wrap(c("nallele"), scale = "free_y")
 
-dist_df <- df %>%
-  pivot_longer(cols = -gene, values_to = "distance", names_to = "other") %>%
-  mutate(id = row_number()) %>%
-  pivot_longer(cols = c(gene, other), values_to = "name", names_to = "var") %>%
-  mutate(var = if_else(var == "gene", "geneA", "geneB")) %>%
-  mutate(major = str_sub(name, 4, 4),
-         minor = str_sub(str_extract(name, "(.*)\\*.*", 1), 5),
-         allele = as.integer(str_extract(name, ".*\\*(.*)", 1))) %>%
-  filter(str_extract(name, "(.*)\\*.*", 1) %in% genes_with_rank) %>%
-  pivot_wider(id_cols = c(id, distance),
-              names_from = var,
-              values_from = c(name, major, minor, allele),
-              names_glue = "{var}_{.value}") %>%
-  filter(!is.na(geneA_name)) %>%
-  filter(!is.na(geneB_name)) %>%
-  select(-id)
+## dist_df <- df %>%
+##   pivot_longer(cols = -gene, values_to = "distance", names_to = "other") %>%
+##   mutate(id = row_number()) %>%
+##   pivot_longer(cols = c(gene, other), values_to = "name", names_to = "var") %>%
+##   mutate(var = if_else(var == "gene", "geneA", "geneB")) %>%
+##   mutate(major = str_sub(name, 4, 4),
+##          minor = str_sub(str_extract(name, "(.*)\\*.*", 1), 5),
+##          allele = as.integer(str_extract(name, ".*\\*(.*)", 1))) %>%
+##   filter(str_extract(name, "(.*)\\*.*", 1) %in% genes_with_rank) %>%
+##   pivot_wider(id_cols = c(id, distance),
+##               names_from = var,
+##               values_from = c(name, major, minor, allele),
+##               names_glue = "{var}_{.value}") %>%
+##   filter(!is.na(geneA_name)) %>%
+##   filter(!is.na(geneB_name)) %>%
+##   select(-id)
 
-dist_df %>%
-  filter(geneA_minor != geneB_minor) %>%
-  filter(distance < 10) %>%
-  ggplot(aes(geneA_name, geneB_name, fill = distance)) +
-  geom_tile() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+## dist_df %>%
+##   filter(geneA_minor != geneB_minor) %>%
+##   filter(distance < 10) %>%
+##   ggplot(aes(geneA_name, geneB_name, fill = distance)) +
+##   geom_tile() +
+##   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 
-sim_df <- dist_df %>%
-  filter(geneA_minor != geneB_minor) %>%
-  filter(distance < 10) %>%
-  arrange(geneA_name) %>%
-  mutate(rankA = as.numeric(factor(geneA_name))) %>%
-  arrange(geneB_name) %>%
-  mutate(rankB = as.numeric(factor(geneB_name))) %>%
-  filter(rankA < rankB) %>%
-  select(geneA_name, geneB_name, rankA, rankB)
+## sim_df <- dist_df %>%
+##   filter(geneA_minor != geneB_minor) %>%
+##   filter(distance < 10) %>%
+##   arrange(geneA_name) %>%
+##   mutate(rankA = as.numeric(factor(geneA_name))) %>%
+##   arrange(geneB_name) %>%
+##   mutate(rankB = as.numeric(factor(geneB_name))) %>%
+##   filter(rankA < rankB) %>%
+##   select(geneA_name, geneB_name, rankA, rankB)
 
-similar_genes <- sim_df %>%
-  anti_join(select(sim_df, rankB) %>% unique(), by = c("rankA" = "rankB")) %>%
-  group_by(geneA_name) %>%
-  group_map(~ c(.y$geneA_name, .x$geneB_name))
+## similar_genes <- sim_df %>%
+##   anti_join(select(sim_df, rankB) %>% unique(), by = c("rankA" = "rankB")) %>%
+##   group_by(geneA_name) %>%
+##   group_map(~ c(.y$geneA_name, .x$geneB_name))
 
-partition <- function(xs, fun) {
-  # gross...
-  list(pass = keep(xs, fun), fail = discard(xs, fun))
-}
+## partition <- function(xs, fun) {
+##   # gross...
+##   list(pass = keep(xs, fun), fail = discard(xs, fun))
+## }
 
-pick_next <- function(xs, fun, more_funs = list()) {
-  pick_first <- function(xs) {
-    ys <- sort(xs)
-    list(rep = ys[[1]], drop = ys[-1])
-  }
-  next_fun <- if (length(more_funs) == 0) {
-    pick_first
-  } else {
-    function(ys) pick_next(ys, more_funs[[1]], more_funs[-1])
-  }
-  res <- partition(xs, fun)
-  if (length(res$pass) == 1) {
-    list(rep = res$pass[[1]], drop = res$fail)
-  } else if (length(res$pass) == 0) {
-    next_fun(xs)
-  } else {
-    .res <- next_fun(res$pass)
-    .res$drop = c(.res$drop, res$fail)
-    .res
-  }
-}
+## pick_next <- function(xs, fun, more_funs = list()) {
+##   pick_first <- function(xs) {
+##     ys <- sort(xs)
+##     list(rep = ys[[1]], drop = ys[-1])
+##   }
+##   next_fun <- if (length(more_funs) == 0) {
+##     pick_first
+##   } else {
+##     function(ys) pick_next(ys, more_funs[[1]], more_funs[-1])
+##   }
+##   res <- partition(xs, fun)
+##   if (length(res$pass) == 1) {
+##     list(rep = res$pass[[1]], drop = res$fail)
+##   } else if (length(res$pass) == 0) {
+##     next_fun(xs)
+##   } else {
+##     .res <- next_fun(res$pass)
+##     .res$drop = c(.res$drop, res$fail)
+##     .res
+##   }
+## }
 
-is_not_dup <- function(gene) {
-  str_sub(str_extract(gene, "(.*)\\*.*", 1), -1) != "D"
-}
+## is_not_dup <- function(gene) {
+##   str_sub(str_extract(gene, "(.*)\\*.*", 1), -1) != "D"
+## }
 
-is_not_K_dup <- function(gene) {
-  !str_detect(str_sub(gene, 4), "D-")
-}
+## is_not_K_dup <- function(gene) {
+##   !str_detect(str_sub(gene, 4), "D-")
+## }
 
-similar_genes %>%
-  map(~ pick_next(.x, ~ !str_detect(.x, "OR"), list(is_not_dup, is_not_K_dup))) %>%
-  imap_dfr(~ tibble(id = .y, new = .x$rep, old = .x$drop)) %>%
-  View()
+## similar_genes %>%
+##   map(~ pick_next(.x, ~ !str_detect(.x, "OR"), list(is_not_dup, is_not_K_dup))) %>%
+##   imap_dfr(~ tibble(id = .y, new = .x$rep, old = .x$drop)) %>%
+##   View()

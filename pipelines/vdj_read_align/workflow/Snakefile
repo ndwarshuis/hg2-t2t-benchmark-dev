@@ -44,6 +44,45 @@ REGIONS = {
     ),
 }
 
+map_params = {
+    "ont": {
+        "mapQ": {
+            "V": 30,
+            "D": 10,
+            "J": 30,
+            "C": 30,
+        },
+        "score": {
+            "V": 0.85,
+            "D": 0.55,
+            "J": 0.5,
+            "C": 0.5,
+        },
+        "optimize": {
+            "gap": 0.2,
+            "score": 0.8,
+        },
+    },
+    "hifi": {
+        "mapQ": {
+            "V": 40,
+            "D": 15,
+            "J": 40,
+            "C": 40,
+        },
+        "score": {
+            "V": 0.85,
+            "D": 0.55,
+            "J": 0.5,
+            "C": 0.5,
+        },
+        "optimize": {
+            "gap": 0.2,
+            "score": 0.8,
+        },
+    },
+}
+
 # wildcard_constraints:
 #     gene=f"({'|'.join(GENES)})",
 
@@ -133,6 +172,7 @@ rule cat_vdj_constant:
         cat {input} > {output}
         """
 
+
 rule cat_vdj_constant_norss:
     input:
         rules.split_imgt_goodies.output.fa_norss,
@@ -219,17 +259,13 @@ rule split_fastq:
     input:
         bam=rules.split_bam.output[0],
         alleles=rules.cat_vdj_constant.output[0],
-        # motifs="static/flank.fa",
     output:
         fasta=directory(ALIGN_PATH / "split" / "{locus}" / "fasta"),
         sam=directory(ALIGN_PATH / "split" / "{locus}" / "aligned"),
         allele_merged=ALIGN_PATH / "split" / "{locus}" / "allele_merged.bam",
-        # motif_merged=ALIGN_PATH / "split" / "{locus}" / "motif_merged.bam",
     log:
         allele_index="log/{bamid}/index/{locus}_allele.log",
-        # motif_index="log/{bamid}/index/{locus}_motif.log",
         allele_align="log/{bamid}/align/{locus}_allele.log",
-        # motif_align="log/{bamid}/align/{locus}_motif.log",
     threads: 8
     conda:
         "envs/master.yml"
@@ -315,11 +351,15 @@ rule write_alleles_tsv:
     output:
         tsv=ALIGN_PATH / "split" / "{locus}" / "final" / "allele.tsv",
         bed=ALIGN_PATH / "split" / "{locus}" / "final" / "allele.bed",
+        ambiguous=ALIGN_PATH / "split" / "{locus}" / "final" / "ambiguous.tsv",
+        low_count=ALIGN_PATH / "split" / "{locus}" / "final" / "low_count.tsv",
         tiling=ALIGN_PATH / "split" / "{locus}" / "final" / "tiling.pdf",
         tiling_allele=ALIGN_PATH / "split" / "{locus}" / "final" / "tiling_allele.pdf",
         profile=ALIGN_PATH / "split" / "{locus}" / "final" / "profile.pdf",
     conda:
         "envs/tidy.yml"
+    params:
+        map_params=lambda w: map_params[w.bamid],
     script:
         "scripts/process_allele.R"
 
@@ -339,7 +379,6 @@ rule all:
     input:
         expand(
             rules.write_alleles_tsv.output
-            # + rules.write_rss_bed.output
             + rules.cat_fasta.output
             + rules.index_alleles.output
             + rules.index_read_fastq.output,
