@@ -1,7 +1,7 @@
 library(tidyverse)
 
 df <- read_tsv(
-  "../../results/immuno_alignments/ont/split/IGK/final/allele.tsv"
+  "../../results/immuno_alignments/hifi/split/IGK/final/allele.tsv"
 ) %>%
   mutate(gene = sprintf("%s%s", major, minor))
 
