@@ -8,6 +8,7 @@ res_dir = Path("results")
 res_asm_dir = res_dir / "asm"
 res_dip_dir = res_dir / "dipcall" / "{parent}"
 
+
 def verkko_url(wildcards):
     hap = wildcards.verkko_hap
     if hap == "pat":
@@ -176,11 +177,171 @@ rule index_output_bams:
         """
 
 
+###
+# analysis
+
+analysis_dir = res_dip_dir / "analysis_hap{parent_idx}"
+
+PAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.7/variants/DeepVariant/all_to_one_element_PCRfree/hg002v0.7_pat_element_PCR_free_2x150_100X_DV_1.5.vcf.gz"
+MAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.7/variants/DeepVariant/all_to_one_element_PCRfree/hg002v0.7_mat_element_PCR_free_2x150_100X_DV_1.5.vcf.gz"
+
+
+use rule download_verkko_asm as download_element with:
+    output:
+        src_dir / "element" / "hap{parent_idx}.vcf.gz",
+    params:
+        url=lambda w: PAT_ELEMENT if int(w.parent_idx) == 1 else MAT_ELEMENT,
+
+
+# Get long stretches in the paired vcf from each parent. Note that the
+# columns seem inverted because 1/1 is variant and we are finding not-variant
+# (ie inherited) which can either be ./. or 0/0 (which is more work, and nobody
+# likes work)
+rule get_inherited_regions:
+    input:
+        rules.run_dipcall.output.pair,
+    output:
+        analysis_dir / "pair_hap{parent_idx}_inherited.bed",
+    # 1 = pat, 2 = mat
+    params:
+        column=lambda w: 11 if int(w.parent_idx) == 1 else 10,
+    shell:
+        """
+        gunzip -c {input} | \
+        awk '{{FS=OFS="\t"}}
+             {{if(${params.column} ~ /^1\/1/) print $1, $2-1,$2+length($4)}}' | \
+        mergeBed -i stdin -d 10000 | \
+        awk '$3-$2>20000' | \
+        mergeBed -i stdin -d 100000 | \
+        awk '$3-$2>200000' | \
+        mergeBed -i stdin -d 1000000 | \
+        awk '$3-$2>1000000' | \
+        mergeBed -i stdin -d 7000000 \
+        > {output}
+        """
+
+
+def invert_parent_idx(parent_idx):
+    if int(parent_idx) == 1:
+        return 2
+    elif int(parent_idx) == 2:
+        return 1
+    else:
+        assert False, "you need more monkeys and typewriters"
+
+
+# Get anti-intersection of each region file; overlaps are ambiguous, and we
+# care about variants for which we can make a definitive statement about its
+# inherited origin
+rule subtract_inherited_regions:
+    input:
+        primary=rules.get_inherited_regions.output,
+        secondary=lambda w: expand(
+            rules.get_inherited_regions.output,
+            allow_missing=True,
+            parent_idx=invert_parent_idx(w.parent_idx),
+        ),
+    output:
+        analysis_dir / "pair_hap{parent_idx}_inherited_clean.bed",
+    shell:
+        """
+        subtractBed -a {input.primary} -b {input.secondary} > {output}
+        """
+
+
+def gt_to_cmd(gt):
+    if gt == "01":
+        return "($10 ~ /^0\/1/ && $12 ~ /^1\/1/  && !($13 ~ /^..1/))"
+    elif gt == "12":
+        return (
+            "($10 ~ /^1\/2/ && "
+            "(($11 ~ /^1\/1/  && !($13 ~ /^..1/)) || "
+            "($11 ~ /^2\/2/  && !($13 ~ /^..2/))))"
+        )
+    else:
+        assert False, "in your world, 2 + 2 = flamboyant refrigerator...try again"
+
+
+# add this prefix to make consistent with current HG2 asms
+rule append_chr_fixed:
+    input:
+        rules.fix_dipcall_vcf.output,
+    output:
+        analysis_dir / "fixed_appended.vcf.gz",
+    params:
+        suffix=lambda w: "PATERNAL" if w.parent_idx == 1 else "MATERNAL",
+    shell:
+        """
+        gunzip -c {input} | \
+        awk '{{FS=OFS="\t"}}
+             {{if(!($1 ~ /^#/)) $1=$1"_{params.suffix}"; print}}' | \
+        bgzip -c > {output}
+        """
+
+
+rule index_appended:
+    input:
+        rules.append_chr_fixed.output,
+    output:
+        rules.append_chr_fixed.output[0] + ".tbi",
+    shell:
+        """
+        tabix {input}
+        """
+
+
+rule merge_element:
+    input:
+        element=rules.download_element.output,
+        pair=rules.run_dipcall.output.pair,
+        fixed_pair=rules.append_chr_fixed.output,
+        _idx=rules.index_appended.output,
+    output:
+        analysis_dir / "pair.element_hap{parent_idx}.vcf",
+    shell:
+        """
+        bcftools merge {input.element} {input.pair} {input.fixed_pair} \
+        --force-samples \
+        > {output}
+        """
+
+
+def parent_to_bam(parent_idx):
+    if parent_idx == 1:
+        return rules.run_dipcall.output.bam1
+    elif parent_idx == 2:
+        return rules.run_dipcall.output.bam2
+    else:
+        assert False, "your keystrokes could inspire a Zappa composition"
+
+
+rule get_element_inherited:
+    input:
+        asm=lambda w: expand(
+            rules.download_verkko_asm.output,
+            verkko_hap=verkko_hap(w.parent),
+        ),
+        bam=lambda w: parent_to_bam(int(w.parent_idx)),
+        element=rules.merge_element.output,
+        inherited=rules.subtract_inherited_regions.output,
+    output:
+        analysis_dir / "hg2element_het{gt}_hap{parent_idx}inherited.vcf",
+    params:
+        awk_cmd=lambda w: gt_to_cmd(w.gt),
+    shell:
+        """
+        intersectBed -a {input.element} -b {input.inherited} -header | \
+        awk '$1 ~ /^#/ || {params.awk_cmd}' | \
+        bcftools view -s {input.bam} --trim-alt-alleles | \
+        bcftools norm -f {input.asm} \
+        > {output}
+        """
+
+
 rule all:
     input:
         expand(
-            rules.index_output_vcfs.output +
-            rules.index_output_bams.output,
+            rules.index_output_vcfs.output + rules.index_output_bams.output,
             parent=[
                 "hg3",
                 "hg4",
@@ -189,4 +350,10 @@ rule all:
                 "hg2_pat_verkko",
                 "hg2_mat_verkko",
             ],
+        ),
+        expand(
+            rules.get_element_inherited.output,
+            parent=["hg3", "hg4"],
+            parent_idx=[1, 2],
+            gt=["01", "12"],
         ),
