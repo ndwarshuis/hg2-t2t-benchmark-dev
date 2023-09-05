@@ -2,8 +2,13 @@ from pathlib import Path
 import json
 
 BAMS = {
-    "ont": "https://giab-data.s3.amazonaws.com/XY_evaluation/11_16_22_R1041_HG002_UL_Kit14_260_Guppy_6.3.8_sup.pass.lt100kb_sorted_haplotagged.bam",
-    "hifi": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/PacBio_CCS_15kb_20kb_chemistry2/GRCh38/HG002.SequelII.merged_15kb_20kb.pbmm2.GRCh38.haplotag.10x.bam",
+    "ont": {
+        "260UL": "https://giab-data.s3.amazonaws.com/XY_evaluation/11_16_22_R1041_HG002_UL_Kit14_260_Guppy_6.3.8_sup.pass.lt100kb_sorted_haplotagged.bam",
+        "400UL": "https://giab-data.s3.amazonaws.com/ontUL_R10_NE/R10UL_400/phased_GRCh38.bam",
+    },
+    "hifi": {
+        "seqII": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/PacBio_CCS_15kb_20kb_chemistry2/GRCh38/HG002.SequelII.merged_15kb_20kb.pbmm2.GRCh38.haplotag.10x.bam",
+    },
 }
 
 IDS = list(map(str, [81, 82, 84, 85, 89]))
@@ -96,15 +101,75 @@ rule intersect_bam:
     input:
         "static/immuno.bed",
     output:
-        ALIGN_PATH / "raw.bam",
+        ALIGN_PATH / "raw_{subbamid}.bam",
     params:
-        url=lambda w: BAMS[w.bamid],
+        url=lambda w: BAMS[w.bamid][w.subbamid],
     conda:
         "envs/bedtools.yml"
     shell:
         """
         curl -LqSs --fail {params.url} | \
         bedtools intersect -abam stdin -b {input} -ubam -u > {output}
+        """
+
+
+rule cat_raw_bams:
+    input:
+        lambda w: expand(
+            rules.intersect_bam.output, bamid=w.bamid, subbamid=list(BAMS[w.bamid])
+        ),
+    output:
+        ALIGN_PATH / "raw.bam",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools cat {input} > {output}
+        """
+
+
+rule sort_raw_bam:
+    input:
+        rules.cat_raw_bams.output,
+    output:
+        ALIGN_PATH / "raw_sorted.bam",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools sort {input} > {output}
+        """
+
+
+rule index_raw_bam:
+    input:
+        rules.sort_raw_bam.output,
+    output:
+        rules.sort_raw_bam.output[0] + ".bai",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools index {input}
+        """
+
+
+rule split_bam:
+    input:
+        _idx=rules.index_raw_bam.output,
+        bam=rules.sort_raw_bam.output,
+    output:
+        ALIGN_PATH / "split" / "{locus}.fastq",
+    params:
+        region=lambda w: REGIONS[w.locus][0],
+    conda:
+        "envs/master.yml"
+    log:
+        "log/{bamid}/split/{locus}.log",
+    shell:
+        """
+        samtools view -h {input.bam} {params.region} | \
+        samtools fastq > {output} 2> {log}
         """
 
 
@@ -208,38 +273,6 @@ rule get_gene_dups:
         "envs/tidy.yml"
     script:
         "scripts/get_dups.R"
-
-
-rule index_bam:
-    input:
-        rules.intersect_bam.output,
-    output:
-        rules.intersect_bam.output[0] + ".bai",
-    conda:
-        "envs/master.yml"
-    shell:
-        """
-        samtools index {input}
-        """
-
-
-rule split_bam:
-    input:
-        _idx=rules.index_bam.output,
-        bam=rules.intersect_bam.output,
-    output:
-        ALIGN_PATH / "split" / "{locus}.fastq",
-    params:
-        region=lambda w: REGIONS[w.locus][0],
-    conda:
-        "envs/master.yml"
-    log:
-        "log/{bamid}/split/{locus}.log",
-    shell:
-        """
-        samtools view -h {input.bam} {params.region} | \
-        samtools fastq > {output} 2> {log}
-        """
 
 
 rule index_read_fastq:
