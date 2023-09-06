@@ -275,6 +275,42 @@ rule get_gene_dups:
         "scripts/get_dups.R"
 
 
+<<<<<<< HEAD
+=======
+rule index_bam:
+    input:
+        rules.intersect_bam.output,
+    output:
+        rules.intersect_bam.output[0] + ".bai",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        samtools index {input}
+        """
+
+
+# TODO get haplotag tag here (HP)
+rule split_bam:
+    input:
+        _idx=rules.index_bam.output,
+        bam=rules.intersect_bam.output,
+    output:
+        ALIGN_PATH / "split" / "{locus}.fastq",
+    params:
+        region=lambda w: REGIONS[w.locus][0],
+    conda:
+        "envs/master.yml"
+    log:
+        "log/{bamid}/split/{locus}.log",
+    shell:
+        """
+        samtools view -h {input.bam} {params.region} | \
+        samtools fastq > {output} 2> {log}
+        """
+
+
+>>>>>>> 2cc21bc (REF add comment)
 rule index_read_fastq:
     input:
         rules.split_bam.output,
