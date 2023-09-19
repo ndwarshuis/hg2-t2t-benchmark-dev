@@ -78,6 +78,8 @@ rule laboriously_obtain_hifiasm_asms:
         src_asm_dir / "parents" / "{parent}" / "{hifiasm_hap}.fa.gz",
 
 
+# TODO nuke all the makefiles before running this; dipcall will try too hard
+# to be smart since it uses make, but snakemake doesn't know this is happening :(
 rule run_dipcall:
     input:
         unpack(
@@ -277,14 +279,28 @@ rule subtract_inherited_regions:
         """
 
 
-def gt_to_cmd(gt):
+def gt_to_cmd(parent, parent_idx, gt):
+    if parent == "hg3":
+        pair_match=".."
+    elif parent == "hg4":
+        pair_match=""
+    else:
+        assert False, "I'm running out of silly things to say"
+
+    if parent_idx == 1:
+        gt_col=11
+    elif parent_idx == 2:
+        gt_col=12
+    else:
+        assert False, "I'm running out of more silly things to say"
+
     if gt == "01":
-        return "($10 ~ /^0\/1/ && $12 ~ /^1\/1/  && !($13 ~ /^..1/))"
+        return f"($10 ~ /^0\/1/ && ${gt_col} ~ /^1\/1/  && !($13 ~ /^{pair_match}1/))"
     elif gt == "12":
         return (
             "($10 ~ /^1\/2/ && "
-            "(($11 ~ /^1\/1/  && !($13 ~ /^..1/)) || "
-            "($11 ~ /^2\/2/  && !($13 ~ /^..2/))))"
+            f"((${gt_col} ~ /^1\/1/ && !($13 ~ /^{pair_match}1/)) || "
+            f"(${gt_col} ~ /^2\/2/ && !($13 ~ /^{pair_match}2/))))"
         )
     else:
         assert False, "in your world, 2 + 2 = flamboyant refrigerator...try again"
@@ -375,9 +391,9 @@ rule get_element_inherited:
         element=rules.merge_element.output,
         inherited=rules.subtract_inherited_regions.output,
     output:
-        analysis_dir / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
+        res_dir / "final_inh_analysis" / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
     params:
-        awk_cmd=lambda w: gt_to_cmd(w.gt),
+        awk_cmd=lambda w: gt_to_cmd(w.parent, int(w.parent_idx), w.gt),
     conda:
         "envs/analysis.yml"
     shell:
@@ -391,6 +407,7 @@ rule get_element_inherited:
 
 
 rule all:
+    localrule: True
     input:
         expand(
             rules.index_output_vcfs.output + rules.index_output_bams.output,
