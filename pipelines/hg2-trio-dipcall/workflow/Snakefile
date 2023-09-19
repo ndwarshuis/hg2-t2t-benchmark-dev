@@ -182,15 +182,37 @@ rule index_output_bams:
 
 analysis_dir = res_dip_dir / "analysis_hap{parent_idx}"
 
-PAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.7/variants/DeepVariant/all_to_one_element_PCRfree/hg002v0.7_pat_element_PCR_free_2x150_100X_DV_1.5.vcf.gz"
-MAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.7/variants/DeepVariant/all_to_one_element_PCRfree/hg002v0.7_mat_element_PCR_free_2x150_100X_DV_1.5.vcf.gz"
+PAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.9/variants/deepvariant/element_2x150/hg002v0.9.pat.X.EBV.element_2x150.vcf.gz"
+MAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.9/variants/deepvariant/element_2x150/hg002v0.9.mat.Y.EBV.element_2x150.vcf.gz"
+
+def element_url(parent):
+    if parent == "hg3":
+        return PAT_ELEMENT
+    if parent == "hg4":
+        return MAT_ELEMENT
+    assert False, "you are a master of dada"
 
 
 use rule download_verkko_asm as download_element with:
     output:
-        src_dir / "element" / "hap{parent_idx}.vcf.gz",
+        src_dir / "element" / "{parent}.vcf.gz",
     params:
-        url=lambda w: PAT_ELEMENT if int(w.parent_idx) == 1 else MAT_ELEMENT,
+        url=lambda w: element_url(w.parent)
+    localrule: True
+
+
+rule index_element:
+    input:
+        rules.download_element.output,
+    output:
+        rules.download_element.output[0] + ".tbi",
+    localrule: True
+    conda:
+        "envs/analysis.yml"
+    shell:
+        """
+        tabix {input}
+        """
 
 
 # Get long stretches in the paired vcf from each parent. Note that the
@@ -205,6 +227,9 @@ rule get_inherited_regions:
     # 1 = pat, 2 = mat
     params:
         column=lambda w: 11 if int(w.parent_idx) == 1 else 10,
+    conda:
+        "envs/analysis.yml"
+    localrule: True
     shell:
         """
         gunzip -c {input} | \
@@ -243,6 +268,9 @@ rule subtract_inherited_regions:
         ),
     output:
         analysis_dir / "pair_hap{parent_idx}_inherited_clean.bed",
+    localrule: True
+    conda:
+        "envs/analysis.yml"
     shell:
         """
         subtractBed -a {input.primary} -b {input.secondary} > {output}
@@ -262,6 +290,28 @@ def gt_to_cmd(gt):
         assert False, "in your world, 2 + 2 = flamboyant refrigerator...try again"
 
 
+def pick_parent_idx(parent_idx, first, second):
+    i = int(parent_idx)
+    if i == 1:
+        return first
+    elif i == 2:
+        return second
+    else:
+        assert False, "your keystrokes could inspire a Zappa composition"
+
+
+def parent_to_bam(parent_idx):
+    return pick_parent_idx(
+        parent_idx, 
+        rules.run_dipcall.output.bam1,
+        rules.run_dipcall.output.bam2,
+    )
+
+
+def get_prefix(parent_idx):
+    return pick_parent_idx(parent_idx, "PATERNAL", "MATERNAL")
+
+
 # add this prefix to make consistent with current HG2 asms
 rule append_chr_fixed:
     input:
@@ -269,7 +319,10 @@ rule append_chr_fixed:
     output:
         analysis_dir / "fixed_appended.vcf.gz",
     params:
-        suffix=lambda w: "PATERNAL" if w.parent_idx == 1 else "MATERNAL",
+        suffix=lambda w: get_prefix(w.parent_idx)
+    localrule: True
+    conda:
+        "envs/analysis.yml"
     shell:
         """
         gunzip -c {input} | \
@@ -284,6 +337,9 @@ rule index_appended:
         rules.append_chr_fixed.output,
     output:
         rules.append_chr_fixed.output[0] + ".tbi",
+    localrule: True
+    conda:
+        "envs/analysis.yml"
     shell:
         """
         tabix {input}
@@ -296,23 +352,17 @@ rule merge_element:
         pair=rules.run_dipcall.output.pair,
         fixed_pair=rules.append_chr_fixed.output,
         _idx=rules.index_appended.output,
+        _idx_ele=rules.index_element.output,
     output:
         analysis_dir / "pair.element_hap{parent_idx}.vcf",
+    conda:
+        "envs/analysis.yml"
     shell:
         """
         bcftools merge {input.element} {input.pair} {input.fixed_pair} \
         --force-samples \
         > {output}
         """
-
-
-def parent_to_bam(parent_idx):
-    if parent_idx == 1:
-        return rules.run_dipcall.output.bam1
-    elif parent_idx == 2:
-        return rules.run_dipcall.output.bam2
-    else:
-        assert False, "your keystrokes could inspire a Zappa composition"
 
 
 rule get_element_inherited:
@@ -325,9 +375,11 @@ rule get_element_inherited:
         element=rules.merge_element.output,
         inherited=rules.subtract_inherited_regions.output,
     output:
-        analysis_dir / "hg2element_het{gt}_hap{parent_idx}inherited.vcf",
+        analysis_dir / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
     params:
         awk_cmd=lambda w: gt_to_cmd(w.gt),
+    conda:
+        "envs/analysis.yml"
     shell:
         """
         intersectBed -a {input.element} -b {input.inherited} -header | \
