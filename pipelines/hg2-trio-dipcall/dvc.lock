@@ -4,6 +4,7 @@ stages:
     cmd: snakemake --profile workflow/profiles/nisaba
     outs:
     - path: results/dipcall
-      md5: a59ca054089a978a768ef648fa67ed1d.dir
-      size: 81677826915
-      nfiles: 157
+      hash: md5
+      md5: 9ecba29d9062caa07111ba29d8b1e2e7.dir
+      size: 26681347804
+      nfiles: 184
