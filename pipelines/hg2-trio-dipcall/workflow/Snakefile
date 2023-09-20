@@ -182,24 +182,37 @@ rule index_output_bams:
 ###
 # analysis
 
+
+def pick_parent_idx(parent_idx, first, second):
+    i = int(parent_idx)
+    if i == 1:
+        return first
+    elif i == 2:
+        return second
+    else:
+        assert False, "your keystrokes could inspire a Zappa composition"
+
+
+def pick_parent(parent, first, second):
+    if parent == "hg3":
+        return first
+    elif parent == "hg4":
+        return second
+    else:
+        assert False, "you are young, reckless, and taking this way too far"
+
+
 analysis_dir = res_dip_dir / "analysis_hap{parent_idx}"
 
 PAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.9/variants/deepvariant/element_2x150/hg002v0.9.pat.X.EBV.element_2x150.vcf.gz"
 MAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.9/variants/deepvariant/element_2x150/hg002v0.9.mat.Y.EBV.element_2x150.vcf.gz"
-
-def element_url(parent):
-    if parent == "hg3":
-        return PAT_ELEMENT
-    if parent == "hg4":
-        return MAT_ELEMENT
-    assert False, "you are a master of dada"
 
 
 use rule download_verkko_asm as download_element with:
     output:
         src_dir / "element" / "{parent}.vcf.gz",
     params:
-        url=lambda w: element_url(w.parent)
+        url=lambda w: pick_parent(w.parent, PAT_ELEMENT, MAT_ELEMENT),
     localrule: True
 
 
@@ -226,9 +239,8 @@ rule get_inherited_regions:
         rules.run_dipcall.output.pair,
     output:
         analysis_dir / "pair_hap{parent_idx}_inherited.bed",
-    # 1 = pat, 2 = mat
     params:
-        column=lambda w: 11 if int(w.parent_idx) == 1 else 10,
+        column=lambda w: pick_parent_idx(w.parent_idx, 11, 10),
     conda:
         "envs/analysis.yml"
     localrule: True
@@ -248,15 +260,6 @@ rule get_inherited_regions:
         """
 
 
-def invert_parent_idx(parent_idx):
-    if int(parent_idx) == 1:
-        return 2
-    elif int(parent_idx) == 2:
-        return 1
-    else:
-        assert False, "you need more monkeys and typewriters"
-
-
 # Get anti-intersection of each region file; overlaps are ambiguous, and we
 # care about variants for which we can make a definitive statement about its
 # inherited origin
@@ -266,7 +269,7 @@ rule subtract_inherited_regions:
         secondary=lambda w: expand(
             rules.get_inherited_regions.output,
             allow_missing=True,
-            parent_idx=invert_parent_idx(w.parent_idx),
+            parent_idx=pick_parent_idx(parent_idx, 2, 1),
         ),
     output:
         analysis_dir / "pair_hap{parent_idx}_inherited_clean.bed",
@@ -280,19 +283,8 @@ rule subtract_inherited_regions:
 
 
 def gt_to_cmd(parent, parent_idx, gt):
-    if parent == "hg3":
-        pair_match=".."
-    elif parent == "hg4":
-        pair_match=""
-    else:
-        assert False, "I'm running out of silly things to say"
-
-    if parent_idx == 1:
-        gt_col=11
-    elif parent_idx == 2:
-        gt_col=12
-    else:
-        assert False, "I'm running out of more silly things to say"
+    pair_match = pick_parent(parent, "..", "")
+    gt_col = pick_parent_idx(parent_idx, 11, 12)
 
     if gt == "01":
         return f"($10 ~ /^0\/1/ && ${gt_col} ~ /^1\/1/  && !($13 ~ /^{pair_match}1/))"
@@ -303,39 +295,21 @@ def gt_to_cmd(parent, parent_idx, gt):
             f"(${gt_col} ~ /^2\/2/ && !($13 ~ /^{pair_match}2/))))"
         )
     else:
-        assert False, "in your world, 2 + 2 = flamboyant refrigerator...try again"
-
-
-def pick_parent_idx(parent_idx, first, second):
-    i = int(parent_idx)
-    if i == 1:
-        return first
-    elif i == 2:
-        return second
-    else:
-        assert False, "your keystrokes could inspire a Zappa composition"
-
-
-def parent_to_bam(parent_idx):
-    return pick_parent_idx(
-        parent_idx, 
-        rules.run_dipcall.output.bam1,
-        rules.run_dipcall.output.bam2,
-    )
-
-
-def get_prefix(parent_idx):
-    return pick_parent_idx(parent_idx, "PATERNAL", "MATERNAL")
+        assert False, "2 + 2 = pickle"
 
 
 # add this prefix to make consistent with current HG2 asms
 rule append_chr_fixed:
     input:
-        rules.fix_dipcall_vcf.output,
+        lambda w: expand(
+            rules.fix_dipcall_vcf.output,
+            allow_missing=True,
+            parent=pick_parent(w.parent, "hg2_pat_verkko", "hg2_mat_verkko"),
+        ),
     output:
-        analysis_dir / "fixed_appended.vcf.gz",
+        analysis_dir / "fixed_appended_verkko.vcf.gz",
     params:
-        suffix=lambda w: get_prefix(w.parent_idx)
+        suffix=lambda w: pick_parent_idx(parent_idx, "PATERNAL", "MATERNAL"),
     localrule: True
     conda:
         "envs/analysis.yml"
@@ -381,6 +355,14 @@ rule merge_element:
         """
 
 
+def parent_to_bam(parent_idx):
+    return pick_parent_idx(
+        parent_idx,
+        rules.run_dipcall.output.bam1,
+        rules.run_dipcall.output.bam2,
+    )
+
+
 rule get_element_inherited:
     input:
         asm=lambda w: expand(
@@ -391,7 +373,9 @@ rule get_element_inherited:
         element=rules.merge_element.output,
         inherited=rules.subtract_inherited_regions.output,
     output:
-        res_dir / "final_inh_analysis" / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
+        res_dir
+        / "final_inh_analysis"
+        / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
     params:
         awk_cmd=lambda w: gt_to_cmd(w.parent, int(w.parent_idx), w.gt),
     conda:
