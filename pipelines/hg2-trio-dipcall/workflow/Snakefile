@@ -203,7 +203,7 @@ def pick_parent(parent, first, second):
 
 
 analysis_dir = res_dir / "analysis"
-analysis_inter_dir = analysis_dir / "{parent"}
+analysis_inter_dir = analysis_dir / "{parent}"
 analysis_inter_parent_dir = analysis_dir / "analysis_hap{parent_idx}"
 analysis_final_dir = analysis_dir / "final"
 
@@ -376,7 +376,8 @@ rule get_element_inherited:
         element=rules.merge_element.output,
         inherited=rules.subtract_inherited_regions.output,
     output:
-        analysis_final_dir / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
+        analysis_final_dir
+        / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
     params:
         awk_cmd=lambda w: gt_to_cmd(w.parent, int(w.parent_idx), w.gt),
     conda:
