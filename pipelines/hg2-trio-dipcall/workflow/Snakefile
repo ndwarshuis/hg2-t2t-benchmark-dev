@@ -202,7 +202,10 @@ def pick_parent(parent, first, second):
         assert False, "you are young, reckless, and taking this way too far"
 
 
-analysis_dir = res_dip_dir / "analysis_hap{parent_idx}"
+analysis_dir = res_dir / "analysis"
+analysis_inter_dir = analysis_dir / "{parent"}
+analysis_inter_parent_dir = analysis_dir / "analysis_hap{parent_idx}"
+analysis_final_dir = analysis_dir / "final"
 
 PAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.9/variants/deepvariant/element_2x150/hg002v0.9.pat.X.EBV.element_2x150.vcf.gz"
 MAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.9/variants/deepvariant/element_2x150/hg002v0.9.mat.Y.EBV.element_2x150.vcf.gz"
@@ -238,7 +241,7 @@ rule get_inherited_regions:
     input:
         rules.run_dipcall.output.pair,
     output:
-        analysis_dir / "pair_hap{parent_idx}_inherited.bed",
+        analysis_inter_parent_dir / "{parent}_pair_hap{parent_idx}_inherited.bed",
     params:
         column=lambda w: pick_parent_idx(w.parent_idx, 11, 10),
     conda:
@@ -269,10 +272,10 @@ rule subtract_inherited_regions:
         secondary=lambda w: expand(
             rules.get_inherited_regions.output,
             allow_missing=True,
-            parent_idx=pick_parent_idx(parent_idx, 2, 1),
+            parent_idx=pick_parent_idx(w.parent_idx, 2, 1),
         ),
     output:
-        analysis_dir / "pair_hap{parent_idx}_inherited_clean.bed",
+        analysis_inter_parent_dir / "{parent}_pair_hap{parent_idx}_inherited_clean.bed",
     localrule: True
     conda:
         "envs/analysis.yml"
@@ -307,9 +310,9 @@ rule append_chr_fixed:
             parent=pick_parent(w.parent, "hg2_pat_verkko", "hg2_mat_verkko"),
         ),
     output:
-        analysis_dir / "fixed_appended_verkko.vcf.gz",
+        analysis_inter_dir / "{parent}_fixed_appended_verkko.vcf.gz",
     params:
-        suffix=lambda w: pick_parent_idx(parent_idx, "PATERNAL", "MATERNAL"),
+        suffix=lambda w: pick_parent(w.parent, "PATERNAL", "MATERNAL"),
     localrule: True
     conda:
         "envs/analysis.yml"
@@ -344,7 +347,7 @@ rule merge_element:
         _idx=rules.index_appended.output,
         _idx_ele=rules.index_element.output,
     output:
-        analysis_dir / "pair.element_hap{parent_idx}.vcf",
+        analysis_inter_dir / "{parent}_pair.element.vcf",
     conda:
         "envs/analysis.yml"
     shell:
@@ -373,9 +376,7 @@ rule get_element_inherited:
         element=rules.merge_element.output,
         inherited=rules.subtract_inherited_regions.output,
     output:
-        res_dir
-        / "final_inh_analysis"
-        / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
+        analysis_final_dir / "{parent}_v_hg2_element_het{gt}_hap{parent_idx}_inherited.vcf",
     params:
         awk_cmd=lambda w: gt_to_cmd(w.parent, int(w.parent_idx), w.gt),
     conda:
