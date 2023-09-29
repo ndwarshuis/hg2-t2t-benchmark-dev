@@ -204,7 +204,7 @@ def pick_parent(parent, first, second):
 
 analysis_dir = res_dir / "analysis"
 analysis_inter_dir = analysis_dir / "{parent}"
-analysis_inter_parent_dir = analysis_dir / "analysis_hap{parent_idx}"
+analysis_inter_parent_dir = analysis_inter_dir / "analysis_hap{parent_idx}"
 analysis_final_dir = analysis_dir / "final"
 
 PAT_ELEMENT = "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/polishing/HG002/v0.9/variants/deepvariant/element_2x150/hg002v0.9.pat.X.EBV.element_2x150.vcf.gz"
