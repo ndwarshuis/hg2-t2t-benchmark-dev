@@ -3,5 +3,6 @@ stages:
     cmd: snakemake --profile workflow/profiles/nisaba
     outs:
     - results/dipcall:
-    - results/final_inh_analysis:
+        persist: true
+    - results/analysis:
         persist: true

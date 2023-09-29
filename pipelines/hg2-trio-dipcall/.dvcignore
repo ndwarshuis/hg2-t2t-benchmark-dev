@@ -5,6 +5,7 @@
 resources
 results/*
 !results/dipcall
+!results/analysis
 
 # workflow files
 workflow
