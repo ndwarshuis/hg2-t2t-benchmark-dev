@@ -47,7 +47,7 @@ rule download_hg2_asm:
     output:
         src_dir / "asm" / "hg2.fa.gz",
     params:
-        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v0.9.fasta",
+        url="https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.0.fasta",
     conda:
         "envs/dipcall.yml"
     shell:
@@ -102,7 +102,7 @@ use rule download_ref as download_strats with:
     output:
         src_dir / "references" / "strats.tar.gz",
     params:
-        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.1/v3.1-genome-stratifications-GRCh38.tar.gz",
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh38@all.tar.gz",
 
 
 ################################################################################
@@ -131,8 +131,8 @@ rule list_test_asm_chrs:
 rule filter_asm:
     input:
         fa=rules.download_hg2_asm.output,
-        regions=rules.list_asm_chrs.output,
-        # regions=rules.list_test_asm_chrs.output,
+        # regions=rules.list_asm_chrs.output,
+        regions=rules.list_test_asm_chrs.output,
     output:
         res_hg2_dir / "{hap}.fa.gz",
     conda:
@@ -239,9 +239,7 @@ rule unzip_strats:
     input:
         rules.download_strats.output,
     output:
-        res_hg38_dir
-        / "strats"
-        / "v3.1-GRCh38-stratifications-all-except-genome-specific-stratifications.tsv",
+        res_hg38_dir / "strats" / "GRCh38-all-stratifications.tsv",
     params:
         dir=lambda _, output: dirname(output[0]),
     shell:
