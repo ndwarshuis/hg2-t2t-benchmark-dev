@@ -131,8 +131,8 @@ rule list_test_asm_chrs:
 rule filter_asm:
     input:
         fa=rules.download_hg2_asm.output,
-        # regions=rules.list_asm_chrs.output,
-        regions=rules.list_test_asm_chrs.output,
+        regions=rules.list_asm_chrs.output,
+        #regions=rules.list_test_asm_chrs.output,
     output:
         res_hg2_dir / "{hap}.fa.gz",
     conda:
