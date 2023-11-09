@@ -4,5 +4,5 @@ stages:
     outs:
     - results/dipcall:
         persist: true
-    - results/analysis:
-        persist: true
+        #- results/analysis:
+        #    persist: true
