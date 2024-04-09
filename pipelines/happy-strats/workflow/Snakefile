@@ -180,8 +180,8 @@ def inputs_for_happiness(wildcards):
 
 
 
-def extra_params(wildcards):
-    return "-T {input.targets}" if wildcards.experiment == "non_syntenic" else ""
+def extra_params(wildcards, input):
+    return "-T " + input.targets[0] if wildcards.experiment == "non_syntenic" else ""
     
 
 rule run_happy:
