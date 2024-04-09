@@ -32,7 +32,6 @@ conf = {
     }
 }
 
-non_syntenic_path = "data/CHM13/non_syntenic.bed.gz"
 
 rule download_ref:
     output:
@@ -73,11 +72,15 @@ use rule download_ref as download_strats with:
         url=lambda w: conf[w.ref]["strats"],
 
 
-use rule download_ref as download_non_syntenic with:
+rule download_non_syntenic:
     output:
-        "resources/{ref}/strats.tar.gz",
+        "resources/non_syntenic.bed"
     params:
-        url=lambda w: conf["CHM13"]["strats"],
+        url="https://hgdownload.soe.ucsc.edu/gbdb/hs1/hgUnique/hgUnique.hg38.bb",
+    conda:
+        "envs/bedtools.yml"
+    shell:
+        "bigBedToBed {params.url} {output}"
 
 
 rule unzip_ref:
@@ -136,7 +139,7 @@ def inputs_for_happiness(wildcards):
         return {**ins, **more}
 
     if wildcards.experiment == "non_syntenic":
-        return go("comparison", {"targets": non_syntenic_path})
+        return go("comparison", {"targets": rules.download_non_syntenic.output})
     else:
         return go(wildcards.experiment, {})
 
