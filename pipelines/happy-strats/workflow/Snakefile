@@ -5,9 +5,19 @@ conf = {
         "ref": "https://giab-data.s3.amazonaws.com/giab-test-data/GRCh38_GIABv3_no_alt_analysis_set_maskedGRC_decoys_MAP2K3_KMT2C_KCNJ18.fasta.gz",
         "query_vcf": {
             "comparison": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/PacBio_HiFi-Revio_20231031/pacbio-wgs-wdl_germline_20231031/HG002.GRCh38.deepvariant.phased.vcf.gz",
+            "ont_old": "http://www.bio8.cs.hku.hk/clair3/analysis_result/ont_guppy4/2_coverage_subsampling/clair/hg003_40x_clair_filter_q748.vcf.gz",
+            "ont_new": "http://www.bio8.cs.hku.hk/clair3/analysis_result/ont_guppy5/2_coverage_subsampling/clair3/hg003_40x_clair3.vcf.gz",
         },
-        "bench_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0.vcf.gz",
-        "bench_bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+        "bench": {
+            "asm": {
+                "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0.vcf.gz",
+                "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+            },
+            "v4": {
+                "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
+                "bed": "http://www.bio8.cs.hku.hk/clair3/analysis_result/ont_guppy5/2_coverage_subsampling/clair3/hg003_40x_clair3.vcf.gz",
+            },
+        },
         "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh38@all.tar.gz",
     },
     "GRCh37": {
@@ -15,19 +25,33 @@ conf = {
         "query_vcf": {
             "comparison": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/PacBio_HiFi-Revio_20231031/pacbio-wgs-wdl_germline_20231031/HG002.GRCh37.deepvariant.phased.vcf.gz",
         },
-        "bench_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0.vcf.gz",
-        "bench_bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+        "bench": {
+            "asm": {
+                "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0.vcf.gz",
+                "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+            },
+            # "v4": {
+            #     "vcf": "NA",
+            #     "bed": "NA",
+            # },
+        },
         "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh37@all.tar.gz",
     },
     "CHM13": {
         "ref": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
         "query_vcf": {
             "comparison": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/PacBio_HiFi-Revio_20231031/pacbio-wgs-wdl_germline_20231031/HG002.CHM13.deepvariant.phased.vcf.gz",
-            "ont_old": "",
-            "ont_new": "",
         },
-        "bench_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0.vcf.gz",
-        "bench_bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+        "bench": {
+            "asm": {
+                "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0.vcf.gz",
+                "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+            },
+            # "v4": {
+            #     "vcf": "",
+            #     "bed": "",
+            # },
+        },
         "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-CHM13@all.tar.gz",
     }
 }
@@ -46,16 +70,16 @@ rule download_ref:
 
 use rule download_ref as download_bench_vcf with:
     output:
-        "resources/{ref}/bench.vcf.gz",
+        "resources/{ref}/{bench}/bench.vcf.gz",
     params:
-        url=lambda w: conf[w.ref]["bench_vcf"],
+        url=lambda w: conf[w.ref]["bench"][w.bench]["vcf"],
 
 
 use rule download_ref as download_bench_bed with:
     output:
-        "resources/{ref}/bench.bed",
+        "resources/{ref}/{bench}/bench.bed",
     params:
-        url=lambda w: conf[w.ref]["bench_bed"],
+        url=lambda w: conf[w.ref]["bench"][w.bench]["bed"],
 
 
 use rule download_ref as download_query_vcf with:
@@ -122,26 +146,37 @@ rule unzip_strats:
 
     
 def inputs_for_happiness(wildcards):
+    exp = wildcards.experiment
+    bench = "v4" if exp.startswith("ont") else "asm"
+
     ins = {
         "_idx": rules.index_ref.output,
         "ref": rules.unzip_ref.output,
-        "bench_bed": rules.download_bench_bed.output,
-        "bench_vcf": rules.download_bench_vcf.output,
+        "bench_bed": expand(
+            rules.download_bench_bed.output,
+            allow_missing = True,
+            bench = bench,
+        ),
+        "bench_vcf": expand(
+            rules.download_bench_vcf.output,
+            allow_missing = True,
+            bench = bench,
+        ),
         "strats": rules.unzip_strats.output,
     }
 
-    def go(exp, more):
+    def go(_exp, more):
         ins["query_vcf"] = expand(
             rules.download_query_vcf.output,
             ref = wildcards.ref,
-            experiment = exp,
+            experiment = _exp,
         )
         return {**ins, **more}
 
-    if wildcards.experiment == "non_syntenic":
+    if exp == "non_syntenic":
         return go("comparison", {"targets": rules.download_non_syntenic.output})
     else:
-        return go(wildcards.experiment, {})
+        return go(exp, {})
 
 
 
@@ -202,4 +237,9 @@ rule all:
             rules.run_happy.output,
             ref = ["CHM13"],
             experiment = "non_syntenic"
+        ),
+        expand(
+            rules.run_happy.output,
+            ref = ["GRCh38"],
+            experiment = ["ont_new", "ont_old"],
         )
