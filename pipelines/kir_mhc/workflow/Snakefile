@@ -1,0 +1,136 @@
+from pathlib import Path
+
+conf = {
+    "hg2_101_pat": {
+        "url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.0.1.pat.fasta.gz",
+        "name": "PATERNAL",
+    },
+    "hg2_101_mat": {
+        "url": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.0.1.mat.fasta.gz",
+        "name": "MATERNAL",
+    },
+}
+
+
+rule download_asm:
+    output:
+        "resources/assemblies/{asm}.fa.gz",
+    params:
+        url=lambda w: conf[w.asm]["url"],
+    shell:
+        """
+        curl -qSs --fail -L {params.url} > {output}
+        """
+
+
+rule download_mhc_kir:
+    output:
+        "resources/mhc_kir.bed"
+    params:
+        mhc_url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/GRCh38@all/OtherDifficult/GRCh38_MHC.bed.gz",
+        kir_url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/GRCh38@all/OtherDifficult/GRCh38_KIR.bed.gz",
+    shell:
+        """
+        cat <(curl -SsqLf {params.mhc_url}) <(curl -SsqLf {params.kir_url}) | \
+        gunzip -c > {output}
+        """
+
+
+rule download_ref:
+    output:
+        "resources/references/hg38.fa.gz",
+    params:
+        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz"
+    shell:
+        """
+        curl -qSs --fail -L {params.url} > {output}
+        """
+
+rule bed_to_mock_gff:
+    input:
+        rules.download_mhc_kir.output,
+    output:
+        "results/mhc_kir.gff"
+    # params:
+    #     name = lambda w: conf[w["asm"]]["name"]
+    run:
+        with open(input[0], "r") as i, open(output[0], "w") as o:
+            for x in i:
+                s = x.strip().split("\t")
+                # c = s[0] + "_" + params["name"]
+                c = s[0]
+                new = [c, ".", "gene", s[1], s[2], ".", ".", "+", "."]
+                o.write("\t".join(new) + "\n")
+
+rule unzip_asm:
+    input:
+        rules.download_asm.output,
+    output:
+        "results/{asm}/asm.fa",
+    shell:
+        "gunzip -c {input} > {output}"
+
+
+rule unzip_ref:
+    input:
+        rules.download_ref.output,
+    output:
+        "results/ref.fa",
+    shell:
+        "gunzip -c {input} > {output}"
+
+
+rule index_asm:
+    input:
+        rules.unzip_asm.output,
+    output:
+        rules.unzip_asm.output[0] + ".fai",
+    conda:
+        "envs/master.yml"
+    shell:
+        "samtools faidx {input}"
+
+        
+rule index_ref:
+    input:
+        rules.unzip_ref.output,
+    output:
+        rules.unzip_ref.output[0] + ".fai",
+    conda:
+        "envs/master.yml"
+    shell:
+        "samtools faidx {input}"
+    
+
+rule lift_genes:
+    input:
+        asm=rules.download_asm.output,
+        # asm_=rules.index_asm.output,
+        ref=rules.download_ref.output,
+        # ref_=rules.index_ref.output,
+        gff=rules.bed_to_mock_gff.output,
+    output:
+        mapped="results/liftoff/{asm}/mapped.gff",
+        unmapped="results/liftoff/{asm}/unmapped.txt",
+        intermediate=directory("results/liftoff/{asm}/intermediate"),
+    log:
+        "results/liftoff/{asm}/lift.log",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        liftoff \
+        -g {input.gff} \
+        -o {output.mapped} \
+        -u {output.unmapped} \
+        -dir {output.intermediate} \
+        {input.asm} {input.ref} > {log} 2>&1
+        """
+
+
+rule all:
+    input:
+        expand(
+            rules.lift_genes.output,
+            asm=["hg2_101_pat", "hg2_101_mat"],
+        ),
