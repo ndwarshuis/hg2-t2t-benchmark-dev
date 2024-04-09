@@ -1,0 +1,151 @@
+from os.path import dirname
+
+conf = {
+    "GRCh38": {
+        "ref": "https://giab-data.s3.amazonaws.com/giab-test-data/GRCh38_GIABv3_no_alt_analysis_set_maskedGRC_decoys_MAP2K3_KMT2C_KCNJ18.fasta.gz",
+        "query_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/PacBio_HiFi-Revio_20231031/pacbio-wgs-wdl_germline_20231031/HG002.GRCh38.deepvariant.phased.vcf.gz",
+        "bench_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0.vcf.gz",
+        "bench_bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+        "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh38@all.tar.gz",
+    },
+    "GRCh37": {
+        "ref": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh37/hs37d5.fa.gz",
+        "query_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/PacBio_HiFi-Revio_20231031/pacbio-wgs-wdl_germline_20231031/HG002.GRCh37.deepvariant.phased.vcf.gz",
+        "bench_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0.vcf.gz",
+        "bench_bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+        "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh37@all.tar.gz",
+    },
+    "CHM13": {
+        "ref": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
+        "query_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/PacBio_HiFi-Revio_20231031/pacbio-wgs-wdl_germline_20231031/HG002.CHM13.deepvariant.phased.vcf.gz",
+        "bench_vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0.vcf.gz",
+        "bench_bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
+        "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-CHM13@all.tar.gz",
+    }
+}
+
+rule download_ref:
+    output:
+        "resources/{ref}/ref.fa.gz",
+    params:
+        url=lambda w: conf[w.ref]["ref"],
+    shell:
+        """
+        curl -SsqLf {params.url} > {output}
+        """
+
+
+use rule download_ref as download_bench_vcf with:
+    output:
+        "resources/{ref}/bench.vcf.gz",
+    params:
+        url=lambda w: conf[w.ref]["bench_vcf"],
+
+
+use rule download_ref as download_bench_bed with:
+    output:
+        "resources/{ref}/bench.bed",
+    params:
+        url=lambda w: conf[w.ref]["bench_bed"],
+
+
+use rule download_ref as download_query_vcf with:
+    output:
+        "resources/{ref}/query.vcf.gz",
+    params:
+        url=lambda w: conf[w.ref]["query_vcf"],
+
+
+use rule download_ref as download_strats with:
+    output:
+        "resources/{ref}/strats.tar.gz",
+    params:
+        url=lambda w: conf[w.ref]["strats"],
+
+
+rule unzip_ref:
+    input:
+        rules.download_ref.output,
+    output:
+        "results/{ref}/ref.fa"
+    shell:
+        """
+        gunzip -c {input} > {output}
+        """
+
+
+rule index_ref:
+    input:
+        rules.unzip_ref.output,
+    output:
+        rules.unzip_ref.output[0] + ".fai",
+    conda:
+        "envs/samtools.yml"
+    shell:
+        """
+        samtools faidx {input}
+        """
+
+
+rule unzip_strats:
+    input:
+        rules.download_strats.output,
+    output:
+        "results/{ref}/strats/{ref}-all-stratifications.tsv"
+    params:
+        dir=lambda _, output: dirname(output[0]),
+    shell:
+        """
+        mkdir -p {params.dir} &&
+        tar xzf {input} --directory {params.dir} --strip-components=1
+        """
+    
+    
+rule run_happy:
+    input:
+        _idx=rules.index_ref.output,
+        ref=rules.unzip_ref.output,
+        bench_vcf=rules.download_bench_vcf.output,
+        bench_bed=rules.download_bench_bed.output,
+        query_vcf=rules.download_query_vcf.output,
+        strats=rules.unzip_strats.output,
+    output:
+        "results/{ref}/happy/happy.extended.csv",
+    params:
+        prefix=lambda _, output: str(output[0]).replace(".extended.csv", ""),
+    conda:
+        "envs/happy.yml"
+    log:
+        "log/{ref}/happy/happy.log",
+    threads: 8
+    resources:
+        mem_mb=64000,
+    shell:
+        """
+        HGREF={input.ref} \
+        hap.py \
+        --engine vcfeval \
+        --verbose \
+        --threads {threads} \
+        --stratification {input.strats} \
+        -f {input.bench_bed} \
+        -o {params.prefix} \
+        {input.bench_vcf} {input.query_vcf} \
+        > {log} 2>&1
+        """
+
+
+rule make_happy_plot:
+    input:
+        expand(rules.run_happy.output, ref = ["GRCh38", "GRCh37", "CHM13"])
+    output:
+        "results/final/happy_summary.pdf"
+    conda:
+        "envs/rmarkdown.yml"
+    script:
+        "scripts/pretty_fig.R"
+
+
+rule all:
+    input:
+        rules.make_happy_plot.output
