@@ -1,3 +1,4 @@
+import re
 from os.path import dirname
 
 conf = {
@@ -13,12 +14,23 @@ conf = {
                 "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0.vcf.gz",
                 "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh38_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
             },
-            "v4": {
-                "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
-                "bed": "http://www.bio8.cs.hku.hk/clair3/analysis_result/ont_guppy5/2_coverage_subsampling/clair3/hg003_40x_clair3.vcf.gz",
-            },
         },
         "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh38@all.tar.gz",
+    },
+    # this is the ref that these pesky ont files use, and it has ambiguous characters which will make happy quite unhappy if we proceed with the "normal" one from above
+    "GRCh38_ambiguous": {
+        "ref": "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
+        "query_vcf": {
+            "ont_old": "http://www.bio8.cs.hku.hk/clair3/analysis_result/ont_guppy4/2_coverage_subsampling/clair/hg003_40x_clair_filter_q748.vcf.gz",
+            "ont_new": "http://www.bio8.cs.hku.hk/clair3/analysis_result/ont_guppy5/2_coverage_subsampling/clair3/hg003_40x_clair3.vcf.gz",
+        },
+        "bench": {
+            "v4": {
+                "vcf": "http://www.bio8.cs.hku.hk/clair3/analysis_result/ont_guppy5/2_coverage_subsampling/clair3/hg003_40x_clair3.vcf.gz",
+                "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NISTv4.2.1/GRCh38/HG002_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
+            },
+        },
+        "strats": "notused",
     },
     "GRCh37": {
         "ref": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh37/hs37d5.fa.gz",
@@ -30,10 +42,6 @@ conf = {
                 "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0.vcf.gz",
                 "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/GRCh37_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
             },
-            # "v4": {
-            #     "vcf": "NA",
-            #     "bed": "NA",
-            # },
         },
         "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-GRCh37@all.tar.gz",
     },
@@ -47,10 +55,6 @@ conf = {
                 "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0.vcf.gz",
                 "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.015-20240215/CHM13v2.0_HG2-T2TQ100-V1.0_smvar.benchmark.bed",
             },
-            # "v4": {
-            #     "vcf": "",
-            #     "bed": "",
-            # },
         },
         "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-CHM13@all.tar.gz",
     }
@@ -162,7 +166,10 @@ def inputs_for_happiness(wildcards):
             allow_missing = True,
             bench = bench,
         ),
-        "strats": rules.unzip_strats.output,
+        "strats": expand(
+            rules.unzip_strats.output,
+            ref = re.match("^([^_]+)_?.*$", wildcards.ref)[1]
+        )
     }
 
     def go(_exp, more):
@@ -217,13 +224,19 @@ rule run_happy:
 
 rule make_happy_plot:
     input:
-        expand(
+        comparison=expand(
             rules.run_happy.output,
             ref = ["GRCh38", "GRCh37", "CHM13"],
             experiment = "comparison"
+        ),
+        ont=expand(
+            rules.run_happy.output,
+            ref = ["GRCh38_ambiguous"],
+            experiment = ["ont_new", "ont_old"],
         )
     output:
-        "results/final/happy_summary.pdf"
+        comparison="results/final/comparison_summary.pdf",
+        ont="results/final/ont_summary.pdf",
     conda:
         "envs/rmarkdown.yml"
     script:
@@ -238,8 +251,3 @@ rule all:
             ref = ["CHM13"],
             experiment = "non_syntenic"
         ),
-        expand(
-            rules.run_happy.output,
-            ref = ["GRCh38"],
-            experiment = ["ont_new", "ont_old"],
-        )

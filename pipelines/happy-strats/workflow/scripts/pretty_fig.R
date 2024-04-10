@@ -2,7 +2,7 @@ library(tidyverse)
 
 root <- "../../results"
 
-subsets <- c(
+comparison_subsets <- c(
   ## "AllAutosomes",
   "AllTandemRepeatsandHomopolymers_slop5",
   "alldifficultregions",
@@ -13,8 +13,22 @@ subsets <- c(
   "segdups"
 )
 
-read_summary <- function(path) {
-  which = path %>% dirname() %>% dirname() %>% basename()
+ont_subsets <- c(
+  "AllAutosomes",
+  "AllTandemRepeatsandHomopolymers_slop5",
+  "alldifficultregions",
+  "alllowmapandsegdupregions",
+  "gclt25orgt65_slop50",
+  "gclt30orgt55_slop50",
+  "lowmappabilityall",
+  "segdups"
+)
+
+path_to_comp <- . %>% dirname() %>% dirname() %>% dirname() %>% basename()
+path_to_ont <- . %>% dirname() %>% dirname() %>% basename()
+
+read_summary <- function(f, path) {
+  which <- f(path)
   read_csv(
     path,
     col_types = cols(
@@ -31,28 +45,23 @@ read_summary <- function(path) {
   ) %>%
     filter(
       Filter == "PASS" &
-        Subtype %in% c("*", "I16_PLUS", "D16_PLUS") &
-        Subset %in% subsets
+        Subtype %in% c("*", "I16_PLUS", "D16_PLUS")
     ) %>%
     rename(
       Recall = METRIC.Recall,
       Precision = METRIC.Precision,
-      ## F1 = METRIC.F1_Score,
-      ## Frac_NA = METRIC.Frac_NA
     ) %>%
     select(Type, Subtype, Subset, Recall, Precision) %>%
     mutate(build = which) %>%
     pivot_longer(cols = c(-Type, -Subtype, -Subset, -build),
                  names_to = "metric",
-                 values_to = "value") %>%
-    ## mutate(value = - 10 * log10(1 - value))
-    mutate(value = 1 - value)
+                 values_to = "value")
 }
 
-df <- map_dfr(snakemake@input, read_summary)
-
-df %>%
+map_dfr(snakemake@input[["comparison"]], ~ read_summary(path_to_comp, .x)) %>%
+  filter(Subset %in% comparison_subsets) %>%
   filter(Subtype == "*") %>%
+  mutate(value = 1 - value) %>%
   ggplot(aes(value, fct_rev(Subset), fill = build)) +
   geom_col(position = "dodge") +
   facet_wrap(c("Type", "metric"), scales = "free_x", ncol = 4) +
@@ -61,4 +70,17 @@ df %>%
        fill = "Reference") +
   theme(legend.position = "top") +
   scale_x_continuous(labels = scales::percent)
-ggsave(snakemake@output[[1]], units = "cm", width = 20, height = 8)
+ggsave(snakemake@output[["comparison"]], units = "cm", width = 20, height = 8)
+
+map_dfr(snakemake@input[["ont"]], ~ read_summary(path_to_ont, .x)) %>%
+  filter(Subset %in% ont_subsets) %>%
+  filter(Subtype == "*") %>%
+  mutate(value = - 10 * log10(1 - value)) %>%
+  ggplot(aes(value, fct_rev(Subset), fill = build)) +
+  geom_col(position = "dodge") +
+  facet_wrap(c("Type", "metric"), scales = "free_x", ncol = 4) +
+  labs(x = "Phred(Error Rate)",
+       y = NULL,
+       fill = "Base/Variant Caller") +
+  theme(legend.position = "top")
+ggsave(snakemake@output[["ont"]], units = "cm", width = 20, height = 8)
