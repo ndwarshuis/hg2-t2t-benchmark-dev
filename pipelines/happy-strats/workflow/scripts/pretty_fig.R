@@ -1,5 +1,7 @@
 library(tidyverse)
 
+# TODO use binconf
+
 root <- "../../results"
 
 comparison_subsets <- c(
@@ -10,9 +12,12 @@ comparison_subsets <- c(
   "gclt25orgt65_slop50",
   "gclt30orgt55_slop50",
   "lowmappabilityall",
-  "segdups"
+  "segdups",
+  "notinalllowmapandsegdupregions",
+  "notinalldifficultregions"
 )
 
+# add (notin)homopolymers and notinalltandemrepeatsandhomopoolymers since that's what ONT is bad at
 ont_subsets <- c(
   "AllAutosomes",
   "AllTandemRepeatsandHomopolymers_slop5",

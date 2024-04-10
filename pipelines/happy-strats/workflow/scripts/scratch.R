@@ -10,6 +10,8 @@ subsets <- c(
   "gclt25orgt65_slop50",
   "gclt30orgt55_slop50",
   "lowmappabilityall",
+  "notinalllowmapandsegdupregions",
+  "notinalldifficultregions",
   "segdups"
 )
 
