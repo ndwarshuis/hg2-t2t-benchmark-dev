@@ -161,6 +161,7 @@ make_plot <- function(df) {
 map_dfr(snakemake@input[["comparison"]], ~ read_summary(path_to_comp, .x)) %>%
   filter(Subset %in% comparison_subsets) %>%
   filter(Subtype == "*") %>%
+  mutate(build = factor(build, levels = c("GRCh37", "GRCh38", "CHM13"))) %>%
   make_plot() +
   facet_wrap(c("Type", "metric"), ncol = 2) +
   labs(x = "Phred(Metric)",
@@ -171,6 +172,7 @@ ggsave(snakemake@output[["comparison"]], units = "mm", width = 70, height = 60)
 map_dfr(snakemake@input[["comparison"]], ~ read_summary(path_to_comp, .x)) %>%
   filter(Subset %in% not_comparison_subsets) %>%
   filter(Subtype == "*") %>%
+  mutate(build = factor(build, levels = c("GRCh37", "GRCh38", "CHM13"))) %>%
   make_plot() +
   facet_wrap(c("Type", "metric"), ncol = 2) +
   labs(x = "Phred(Metric)",
