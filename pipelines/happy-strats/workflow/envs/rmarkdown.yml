@@ -2,3 +2,4 @@ channels:
   - conda-forge
 dependencies:
   - r-tidyverse=1.3.2
+  - r-hmisc=5.1_2

@@ -233,10 +233,17 @@ rule make_happy_plot:
             rules.run_happy.output,
             ref = ["GRCh38_ambiguous"],
             experiment = ["ont_new", "ont_old"],
-        )
+        ),
+        nonsyn=expand(
+            rules.run_happy.output,
+            ref = ["CHM13"],
+            experiment = ["non_syntenic", "comparison"]
+        ),
     output:
         comparison="results/final/comparison_summary.pdf",
+        not_comparison="results/final/not_comparison_summary.pdf",
         ont="results/final/ont_summary.pdf",
+        nonsyn="results/final/nonsyn_summary.pdf",
     conda:
         "envs/rmarkdown.yml"
     script:
@@ -246,8 +253,3 @@ rule make_happy_plot:
 rule all:
     input:
         rules.make_happy_plot.output,
-        expand(
-            rules.run_happy.output,
-            ref = ["CHM13"],
-            experiment = "non_syntenic"
-        ),
