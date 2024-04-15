@@ -11,6 +11,11 @@ conf = {
     },
 }
 
+refs = {
+    "hg38": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz",
+    "chm13": "https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz",
+}
+
 
 rule download_asm:
     output:
@@ -25,42 +30,72 @@ rule download_asm:
 
 rule download_mhc_kir:
     output:
-        "resources/mhc_kir.bed"
+        "resources/mhc_kir.bed",
     params:
         mhc_url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/GRCh38@all/OtherDifficult/GRCh38_MHC.bed.gz",
         kir_url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/GRCh38@all/OtherDifficult/GRCh38_KIR.bed.gz",
     shell:
         """
-        cat <(curl -SsqLf {params.mhc_url}) <(curl -SsqLf {params.kir_url}) | \
+        cat <(curl -SsqLf {params.mhc_url}) \
+            <(curl -SsqLf {params.kir_url}) | \
         gunzip -c > {output}
+        """
+
+
+rule download_par:
+    output:
+        "resources/par.bed",
+    params:
+        par_url="https://raw.githubusercontent.com/SexChrLab/SexChrCoordinates/4ad1faf2b822db6fb89498a750d0b5336703fde3/T2T/chrY_genomic_features_HG002.bed",
+    shell:
+        """
+        curl -SsqLf {params.par_url} | grep PAR | cut -f 1,2,3 > {output}
         """
 
 
 rule download_ref:
     output:
-        "resources/references/hg38.fa.gz",
+        "resources/references/{ref}.fa.gz",
     params:
-        url="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/references/GRCh38/GCA_000001405.15_GRCh38_no_alt_analysis_set.fasta.gz"
+        url=lambda w: refs[w["ref"]],
     shell:
         """
         curl -qSs --fail -L {params.url} > {output}
         """
 
+
 rule bed_to_mock_gff:
     input:
         rules.download_mhc_kir.output,
     output:
-        "results/mhc_kir.gff"
-    # params:
-    #     name = lambda w: conf[w["asm"]]["name"]
+        "results/mhc_kir.gff",
     run:
         with open(input[0], "r") as i, open(output[0], "w") as o:
             for x in i:
                 s = x.strip().split("\t")
                 # c = s[0] + "_" + params["name"]
                 c = s[0]
-                new = [c, ".", "gene", s[1], s[2], ".", ".", "+", "."]
+                # NOTE gff is 1-based
+                new = [
+                    c,
+                    ".",
+                    "gene",
+                    str(int(s[1]) + 1),
+                    str(int(s[2]) + 1),
+                    ".",
+                    ".",
+                    "+",
+                    ".",
+                ]
                 o.write("\t".join(new) + "\n")
+
+
+use rule bed_to_mock_gff as bed_to_mock_gff_par with:
+    input:
+        rules.download_par.output,
+    output:
+        "results/par.gff",
+
 
 rule unzip_asm:
     input:
@@ -75,7 +110,7 @@ rule unzip_ref:
     input:
         rules.download_ref.output,
     output:
-        "results/ref.fa",
+        "results/{ref}.fa",
     shell:
         "gunzip -c {input} > {output}"
 
@@ -90,7 +125,7 @@ rule index_asm:
     shell:
         "samtools faidx {input}"
 
-        
+
 rule index_ref:
     input:
         rules.unzip_ref.output,
@@ -100,13 +135,13 @@ rule index_ref:
         "envs/master.yml"
     shell:
         "samtools faidx {input}"
-    
+
 
 rule lift_genes:
     input:
         asm=rules.download_asm.output,
         # asm_=rules.index_asm.output,
-        ref=rules.download_ref.output,
+        ref=expand(rules.download_ref.output, ref="hg38"),
         # ref_=rules.index_ref.output,
         gff=rules.bed_to_mock_gff.output,
     output:
@@ -128,9 +163,35 @@ rule lift_genes:
         """
 
 
+rule lift_par:
+    input:
+        asm=rules.download_asm.output,
+        # asm_=rules.index_asm.output,
+        ref=expand(rules.download_ref.output, ref="chm13"),
+        # ref_=rules.index_ref.output,
+        gff=rules.bed_to_mock_gff_par.output,
+    output:
+        mapped="results/liftoff_par/{asm}/mapped.gff",
+        unmapped="results/liftoff_par/{asm}/unmapped.txt",
+        intermediate=directory("results/liftoff_par/{asm}/intermediate"),
+    log:
+        "results/liftoff/{asm}/lift.log",
+    conda:
+        "envs/master.yml"
+    shell:
+        """
+        liftoff \
+        -g {input.gff} \
+        -o {output.mapped} \
+        -u {output.unmapped} \
+        -dir {output.intermediate} \
+        {input.asm} {input.ref} > {log} 2>&1
+        """
+
+
 rule all:
     input:
         expand(
-            rules.lift_genes.output,
+            rules.lift_genes.output + rules.lift_par.output,
             asm=["hg2_101_pat", "hg2_101_mat"],
         ),
