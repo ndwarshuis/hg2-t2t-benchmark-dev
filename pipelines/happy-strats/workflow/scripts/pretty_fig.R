@@ -1,9 +1,5 @@
 library(tidyverse)
 
-# TODO use binconf
-
-root <- "../../results"
-
 pretty_theme <-
   theme(
     text = element_text(size = 6),
@@ -30,7 +26,6 @@ errorbar_size <- 0.2
 phred <- function(x) {
   if_else(x <= 0, NA, - 10 * log10(x))
 }
-
 
 binCI <- function(x, n, name) {
   .mean <- sprintf("%s_mean", name)
