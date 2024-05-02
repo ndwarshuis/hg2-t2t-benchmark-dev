@@ -1,5 +1,7 @@
 library(tidyverse)
 
+root <- "../../results"
+
 pretty_theme <-
   theme(
     text = element_text(size = 6),
@@ -54,7 +56,6 @@ comparison_subsets <- c(
 )
 
 not_comparison_subsets <- c(
-  "notinalllowmapandsegdupregions",
   "notinalldifficultregions"
 )
 
@@ -163,7 +164,7 @@ map_dfr(snakemake@input[["comparison"]], ~ read_summary(path_to_comp, .x)) %>%
   labs(x = "Phred(Metric)",
        y = NULL,
        fill = "Reference")
-ggsave(snakemake@output[["comparison"]], units = "mm", width = 70, height = 60)
+ggsave(snakemake@output[["comparison"]], units = "mm", width = 70, height = 90)
 
 map_dfr(snakemake@input[["comparison"]], ~ read_summary(path_to_comp, .x)) %>%
   filter(Subset %in% not_comparison_subsets) %>%
@@ -174,7 +175,7 @@ map_dfr(snakemake@input[["comparison"]], ~ read_summary(path_to_comp, .x)) %>%
   labs(x = "Phred(Metric)",
        y = NULL,
        fill = "Reference")
-ggsave(snakemake@output[["not_comparison"]], units = "mm", width = 70, height = 50)
+ggsave(snakemake@output[["not_comparison"]], units = "mm", width = 70, height = 46)
 
 map_dfr(snakemake@input[["ont"]], ~ read_summary(path_to_ont, .x)) %>%
   filter(Subset %in% ont_subsets) %>%
@@ -187,7 +188,7 @@ map_dfr(snakemake@input[["ont"]], ~ read_summary(path_to_ont, .x)) %>%
   labs(x = "Phred(Metric)",
        y = NULL,
        fill = "Base/Variant Caller")
-ggsave(snakemake@output[["ont"]], units = "mm", width = 70, height = 80)
+ggsave(snakemake@output[["ont"]], units = "mm", width = 70, height = 60)
 
 map_dfr(snakemake@input[["nonsyn"]], ~ read_summary(path_to_ont, .x)) %>%
   filter(Subset %in% nonsyn_subsets) %>%
@@ -200,4 +201,4 @@ map_dfr(snakemake@input[["nonsyn"]], ~ read_summary(path_to_ont, .x)) %>%
   labs(x = "Phred(Metric)",
        y = NULL,
        fill = "Target Regions")
-ggsave(snakemake@output[["nonsyn"]], units = "mm", width = 70, height = 80)
+ggsave(snakemake@output[["nonsyn"]], units = "mm", width = 70, height = 70)
