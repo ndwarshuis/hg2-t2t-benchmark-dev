@@ -1,3 +1,14 @@
-*
-!chm13/
-!chm13/config.yaml
+/*
+
+!chm13
+chm13/*
+
+!grch38
+grch38/*
+
+!grch37
+grch37/*
+
+!**/config.json
+!**/run.sh
+!**/asm.tsv

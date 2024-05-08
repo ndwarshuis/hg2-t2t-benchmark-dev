@@ -1,0 +1,8 @@
+{
+  "reference": "grch37.fa.gz",
+  "assembly_table": "asm.tsv",
+  "merge_ins": "nr::exact:match(1.0)",
+  "merge_del": "nr::exact",
+  "merge_inv": "nr::exact:ro(0.5)",
+  "inv_inner": "True"
+}
