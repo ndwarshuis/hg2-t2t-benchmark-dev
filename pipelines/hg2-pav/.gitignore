@@ -1,7 +1,3 @@
-log
-results
-resources
-data
-.snakemake
-cluster_logs
-test
+*
+!chm13/
+!chm13/config.yaml
