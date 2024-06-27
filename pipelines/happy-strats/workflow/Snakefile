@@ -27,7 +27,7 @@ conf = {
         "bench": {
             "v4": {
                 "vcf": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG003_NA24149_father/NISTv4.2.1/GRCh38/HG003_GRCh38_1_22_v4.2.1_benchmark.vcf.gz",
-                "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG003_NA24149_father/NISTv4.2.1/GRCh38/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed"
+                "bed": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG003_NA24149_father/NISTv4.2.1/GRCh38/HG003_GRCh38_1_22_v4.2.1_benchmark_noinconsistent.bed",
             },
         },
         "strats": "notused",
@@ -57,7 +57,7 @@ conf = {
             },
         },
         "strats": "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v3.3/genome-stratifications-CHM13@all.tar.gz",
-    }
+    },
 }
 
 
@@ -102,20 +102,20 @@ use rule download_ref as download_strats with:
 
 rule download_non_syntenic:
     output:
-        "resources/non_syntenic.bed"
+        "resources/non_syntenic.bed",
     params:
         url="https://hgdownload.soe.ucsc.edu/gbdb/hs1/hgUnique/hgUnique.hg38.bb",
     conda:
         "envs/bedtools.yml"
     shell:
-        "bigBedToBed {params.url} {output}"    
+        "bigBedToBed {params.url} {output}"
 
 
 rule unzip_ref:
     input:
         rules.download_ref.output,
     output:
-        "results/{ref}/ref.fa"
+        "results/{ref}/ref.fa",
     shell:
         """
         gunzip -c {input} > {output}
@@ -139,7 +139,7 @@ rule get_genome:
     input:
         rules.index_ref.output,
     output:
-        "results/{ref}/genome.txt"
+        "results/{ref}/genome.txt",
     shell:
         """
         cut -f1,2 {input} > {output}
@@ -150,7 +150,7 @@ rule unzip_strats:
     input:
         rules.download_strats.output,
     output:
-        "results/{ref}/strats/{ref}-all-stratifications.tsv"
+        "results/{ref}/strats/{ref}-all-stratifications.tsv",
     params:
         dir=lambda _, output: dirname(output[0]),
     shell:
@@ -163,9 +163,9 @@ rule unzip_strats:
 rule get_syntenic:
     input:
         bed=rules.download_non_syntenic.output,
-        genome=expand(rules.get_genome.output, ref = "CHM13")
+        genome=expand(rules.get_genome.output, ref="CHM13"),
     output:
-        "resources/syntenic.bed"
+        "resources/syntenic.bed",
     conda:
         "envs/bedtools.yml"
     shell:
@@ -174,7 +174,7 @@ rule get_syntenic:
         complementBed -i stdin -g {input.genome} > {output}
         """
 
-    
+
 def inputs_for_happiness(wildcards):
     exp = wildcards.experiment
     bench = "v4" if exp.startswith("ont") else "asm"
@@ -184,25 +184,24 @@ def inputs_for_happiness(wildcards):
         "ref": rules.unzip_ref.output,
         "bench_bed": expand(
             rules.download_bench_bed.output,
-            allow_missing = True,
-            bench = bench,
+            allow_missing=True,
+            bench=bench,
         ),
         "bench_vcf": expand(
             rules.download_bench_vcf.output,
-            allow_missing = True,
-            bench = bench,
+            allow_missing=True,
+            bench=bench,
         ),
         "strats": expand(
-            rules.unzip_strats.output,
-            ref = re.match("^([^_]+)_?.*$", wildcards.ref)[1]
-        )
+            rules.unzip_strats.output, ref=re.match("^([^_]+)_?.*$", wildcards.ref)[1]
+        ),
     }
 
     def go(_exp, more):
         ins["query_vcf"] = expand(
             rules.download_query_vcf.output,
-            ref = wildcards.ref,
-            experiment = _exp,
+            ref=wildcards.ref,
+            experiment=_exp,
         )
         return {**ins, **more}
 
@@ -214,10 +213,13 @@ def inputs_for_happiness(wildcards):
         return go(exp, {})
 
 
-
 def extra_params(wildcards, input):
-    return "-T " + input.targets[0] if wildcards.experiment == "non_syntenic" else ""
-    
+    return (
+        "-T " + input.targets[0]
+        if wildcards.experiment in ["non_syntenic", "syntenic"]
+        else ""
+    )
+
 
 rule run_happy:
     input:
@@ -254,18 +256,18 @@ rule make_happy_plot:
     input:
         comparison=expand(
             rules.run_happy.output,
-            ref = ["GRCh38", "GRCh37", "CHM13"],
-            experiment = "comparison"
+            ref=["GRCh38", "GRCh37", "CHM13"],
+            experiment="comparison",
         ),
         ont=expand(
             rules.run_happy.output,
-            ref = ["GRCh38_ambiguous"],
-            experiment = ["ont_new", "ont_old"],
+            ref=["GRCh38_ambiguous"],
+            experiment=["ont_new", "ont_old"],
         ),
         nonsyn=expand(
             rules.run_happy.output,
-            ref = ["CHM13"],
-            experiment = ["non_syntenic", "syntenic"]
+            ref=["CHM13"],
+            experiment=["non_syntenic", "syntenic"],
         ),
     output:
         comparison="results/final/comparison_summary.pdf",
