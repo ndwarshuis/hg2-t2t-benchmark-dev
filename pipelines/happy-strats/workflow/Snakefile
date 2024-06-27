@@ -108,7 +108,7 @@ rule download_non_syntenic:
     conda:
         "envs/bedtools.yml"
     shell:
-        "bigBedToBed {params.url} {output}"
+        "bigBedToBed {params.url} {output}"    
 
 
 rule unzip_ref:
@@ -135,6 +135,17 @@ rule index_ref:
         """
 
 
+rule get_genome:
+    input:
+        rules.index_ref.output,
+    output:
+        "results/{ref}/genome.txt"
+    shell:
+        """
+        cut -f1,3 {input} > {output}
+        """
+
+
 rule unzip_strats:
     input:
         rules.download_strats.output,
@@ -146,6 +157,20 @@ rule unzip_strats:
         """
         mkdir -p {params.dir} &&
         tar xzf {input} --directory {params.dir} --strip-components=1
+        """
+
+
+rule get_syntenic:
+    input:
+        bed=rules.download_non_syntenic.output,
+        genome=expand(rules.get_genome.output, ref = "CHM13")
+    output:
+        "resources/syntenic.bed"
+    conda:
+        "envs/bedtools.yml"
+    shell:
+        """
+        complementBed {input.bed} -g {input.genome} > {output}
         """
 
     
@@ -182,6 +207,8 @@ def inputs_for_happiness(wildcards):
 
     if exp == "non_syntenic":
         return go("comparison", {"targets": rules.download_non_syntenic.output})
+    elif exp == "syntenic":
+        return go("comparison", {"targets": rules.get_syntenic.output})
     else:
         return go(exp, {})
 
@@ -237,7 +264,7 @@ rule make_happy_plot:
         nonsyn=expand(
             rules.run_happy.output,
             ref = ["CHM13"],
-            experiment = ["non_syntenic", "comparison"]
+            experiment = ["non_syntenic", "syntenic"]
         ),
     output:
         comparison="results/final/comparison_summary.pdf",
