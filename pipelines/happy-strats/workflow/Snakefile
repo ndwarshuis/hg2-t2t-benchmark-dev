@@ -142,7 +142,7 @@ rule get_genome:
         "results/{ref}/genome.txt"
     shell:
         """
-        cut -f1,3 {input} > {output}
+        cut -f1,2 {input} > {output}
         """
 
 
