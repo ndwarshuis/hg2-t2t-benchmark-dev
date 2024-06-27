@@ -3,3 +3,4 @@ channels:
   - bioconda
 dependencies:
   - ucsc-bigbedtobed=377
+  - bedtools=2.30.0
