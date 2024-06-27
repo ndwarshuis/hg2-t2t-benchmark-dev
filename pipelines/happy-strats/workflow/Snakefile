@@ -170,7 +170,7 @@ rule get_syntenic:
         "envs/bedtools.yml"
     shell:
         """
-        complementBed {input.bed} -g {input.genome} > {output}
+        complementBed -i {input.bed} -g {input.genome} > {output}
         """
 
     
