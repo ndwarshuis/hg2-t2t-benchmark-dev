@@ -143,7 +143,7 @@ make_plot <- function(df) {
         TRUE ~ "other"
       )
     ) %>%
-    mutate(Type == if_else(Type == "SNP", "SNV", Type)) %>%
+    mutate(Type = if_else(Type == "SNP", "SNV", Type)) %>%
     ggplot(aes(mean, fct_rev(Subset), fill = build)) +
     geom_col(position = position_dodge()) +
     geom_errorbar(
