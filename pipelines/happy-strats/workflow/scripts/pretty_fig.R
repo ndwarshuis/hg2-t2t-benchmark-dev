@@ -194,7 +194,7 @@ map_dfr(snakemake@input[["nonsyn"]], ~ read_summary(path_to_ont, .x)) %>%
   filter(Subset %in% nonsyn_subsets) %>%
   filter(Subtype == "*") %>%
   mutate(
-    build = if_else(build == "comparison", "all", "non-syntenic"),
+    build = if_else(build == "syntenic", "all", "non-syntenic"),
   ) %>%
   make_plot() +
   facet_wrap(c("Type", "metric"), ncol = 2) +
