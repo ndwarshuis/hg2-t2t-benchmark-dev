@@ -100,17 +100,6 @@ use rule download_ref as download_strats with:
         url=lambda w: conf[w.ref]["strats"],
 
 
-rule download_non_syntenic:
-    output:
-        "resources/non_syntenic.bed",
-    params:
-        url="https://hgdownload.soe.ucsc.edu/gbdb/hs1/hgUnique/hgUnique.hg38.bb",
-    conda:
-        "envs/bedtools.yml"
-    shell:
-        "bigBedToBed {params.url} {output}"
-
-
 rule unzip_ref:
     input:
         rules.download_ref.output,
@@ -146,6 +135,22 @@ rule get_genome:
         """
 
 
+rule download_non_syntenic:
+    input:
+        expand(rules.get_genome.output, ref="CHM13"),
+    output:
+        "resources/non_syntenic.bed",
+    params:
+        url="https://hgdownload.soe.ucsc.edu/gbdb/hs1/hgUnique/hgUnique.hg38.bb",
+    conda:
+        "envs/bedtools.yml"
+    shell:
+        """
+        bigBedToBed {params.url} stdout | \
+        sortBed -i stdin -g {input} > {output}
+        """
+
+
 rule unzip_strats:
     input:
         rules.download_strats.output,
@@ -170,8 +175,7 @@ rule get_syntenic:
         "envs/bedtools.yml"
     shell:
         """
-        sortBed -i {input.bed} -g {input.genome} | \
-        complementBed -i stdin -g {input.genome} > {output}
+        complementBed -i {input.bed} -g {input.genome} > {output}
         """
 
 
